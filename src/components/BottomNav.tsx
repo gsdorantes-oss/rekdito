@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Home, ShoppingCart, User, LayoutDashboard, ShoppingBag } from 'lucide-react';
 import { useCart } from '../context/CartContext';
@@ -6,11 +6,31 @@ import { useAuth } from '../context/AuthContext';
 
 export default function BottomNav() {
   const { items } = useCart();
-  const { isAdmin } = useAuth();
+  const { isAdmin, isManager } = useAuth();
   const cartCount = items.length;
+  const [isVisible, setIsVisible] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
+
+  useEffect(() => {
+    const controlNavbar = () => {
+      if (typeof window !== 'undefined') {
+        if (window.scrollY > lastScrollY && window.scrollY > 100) { // scrolling down
+          setIsVisible(false);
+        } else { // scrolling up
+          setIsVisible(true);
+        }
+        setLastScrollY(window.scrollY);
+      }
+    };
+
+    window.addEventListener('scroll', controlNavbar);
+    return () => {
+      window.removeEventListener('scroll', controlNavbar);
+    };
+  }, [lastScrollY]);
 
   return (
-    <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-lg border-t border-slate-100 z-50 pb-safe">
+    <nav className={`md:hidden fixed bottom-0 left-0 right-0 bg-white/80 backdrop-blur-lg border-t border-slate-100 z-50 pb-safe transition-transform duration-300 ${isVisible ? 'translate-y-0' : 'translate-y-full'}`}>
       <div className="flex justify-around items-center h-16">
         <NavLink 
           to="/" 

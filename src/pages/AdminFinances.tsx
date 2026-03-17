@@ -31,7 +31,7 @@ import { es } from 'date-fns/locale';
 import { useAuth } from '../context/AuthContext';
 
 export default function AdminFinances() {
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
   const [loading, setLoading] = useState(true);
   const [selectedWeek, setSelectedWeek] = useState(0); // 0 = current week, 1 = last week, etc.
   const [data, setData] = useState({
@@ -49,7 +49,7 @@ export default function AdminFinances() {
   }, [selectedWeek]);
 
   const fetchFinancialData = async () => {
-    if (!profile?.store_id) return;
+    if (!profile?.store_id && !isAdmin) return;
     setLoading(true);
     try {
       const now = new Date();
@@ -57,12 +57,17 @@ export default function AdminFinances() {
       const weekEnd = endOfWeek(subWeeks(now, selectedWeek), { weekStartsOn: 1 });
 
       // Fetch all orders with items and products
-      const { data: orders, error: ordersError } = await supabase
+      let query = supabase
         .from('orders')
         .select('*, order_items(*, products(*))')
-        .eq('store_id', profile.store_id)
         .gte('created_at', weekStart.toISOString())
         .lte('created_at', weekEnd.toISOString());
+
+      if (profile?.store_id) {
+        query = query.eq('store_id', profile.store_id);
+      }
+
+      const { data: orders, error: ordersError } = await query;
 
       if (ordersError) throw ordersError;
 

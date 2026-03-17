@@ -8,6 +8,8 @@ interface AuthContextType {
   profile: Profile | null;
   loading: boolean;
   isAdmin: boolean;
+  isManager: boolean;
+  managedStoreId: string | null;
   signOut: () => Promise<void>;
 }
 
@@ -65,9 +67,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const isAdmin = profile?.role === 'admin';
+  const isManager = profile?.role === 'manager';
+  const managedStoreId = profile?.store_id || null;
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, isAdmin, signOut }}>
+    <AuthContext.Provider value={{ user, profile, loading, isAdmin, isManager, managedStoreId, signOut }}>
       {children}
     </AuthContext.Provider>
   );

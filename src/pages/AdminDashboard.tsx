@@ -61,10 +61,16 @@ export default function AdminDashboard() {
       if (customerError) throw customerError;
 
       // Low Stock
-      const { count: lowStockCount, error: stockError } = await supabase
+      let stockQuery = supabase
         .from('products')
         .select('*', { count: 'exact', head: true })
         .lt('stock', 10);
+      
+      if (profile?.store_id) {
+        stockQuery = stockQuery.eq('store_id', profile.store_id);
+      }
+
+      const { count: lowStockCount, error: stockError } = await stockQuery;
       
       if (stockError) throw stockError;
 
@@ -170,6 +176,10 @@ export default function AdminDashboard() {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-black text-slate-900">Panel de Control</h1>
         <div className="flex gap-3">
+          <Link to="/admin/inventory" className="bg-white border border-slate-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all flex items-center gap-2">
+            <Package size={16} className="text-blue-600" />
+            Inventario
+          </Link>
           <Link to="/admin/stores" className="bg-white border border-slate-200 px-4 py-2 rounded-xl text-sm font-bold hover:bg-slate-50 transition-all flex items-center gap-2">
             <ShoppingBag size={16} className="text-purple-600" />
             Tiendas

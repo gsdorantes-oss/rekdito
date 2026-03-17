@@ -20,7 +20,7 @@ export interface Profile {
   full_name: string;
   phone: string;
   address: string;
-  role: 'admin' | 'client';
+  role: 'admin' | 'manager' | 'client';
   store_id?: string;
   created_at: string;
 }

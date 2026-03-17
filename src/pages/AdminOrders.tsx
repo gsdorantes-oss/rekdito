@@ -49,18 +49,9 @@ export default function AdminOrders() {
         query = query.eq('store_id', profile.store_id);
       }
 
-      let { data, error } = await query;
+      const { data, error } = await query;
       
-      if (error) {
-        console.warn('Fetch with profiles failed, trying simple fetch:', error);
-        const { data: simpleData, error: simpleError } = await supabase
-          .from('orders')
-          .select('*')
-          .order('created_at', { ascending: false });
-        
-        if (simpleError) throw simpleError;
-        data = simpleData;
-      }
+      if (error) throw error;
 
       // Sort orders by status priority: Pendiente > Preparando > En camino > Entregado
       const statusPriority: Record<string, number> = {
