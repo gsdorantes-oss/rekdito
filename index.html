@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <script>
+      // Prevent libraries from overwriting the global fetch property
+      // which is read-only in some environments.
+      (function() {
+        const originalFetch = window.fetch;
+        Object.defineProperty(window, 'fetch', {
+          get: function() { return originalFetch; },
+          set: function() { console.warn('Attempt to overwrite window.fetch blocked.'); },
+          configurable: false
+        });
+      })();
+    </script>
+    <title>RECADITO - Frutas y Verduras</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

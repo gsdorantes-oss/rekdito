@@ -1,0 +1,5 @@
+{
+  "name": "RECADITO",
+  "description": "Sistema de gestión para negocio de frutas, verduras y paquetes mixtos con integración de Supabase y WhatsApp.",
+  "requestFramePermissions": ["geolocation"]
+}
