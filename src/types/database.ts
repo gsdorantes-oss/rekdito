@@ -56,6 +56,17 @@ export interface OrderItem {
   products?: Product;
 }
 
+export interface Store {
+  id: string;
+  name: string;
+  address: string;
+  phone: string;
+  lat: number;
+  lng: number;
+  is_active: boolean;
+  created_at: string;
+}
+
 export interface DeliveryZone {
   id: string;
   name: string;

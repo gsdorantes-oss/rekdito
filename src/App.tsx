@@ -4,6 +4,7 @@ import { Toaster } from 'react-hot-toast';
 import { LayoutDashboard, ShoppingBag, TrendingUp, MapPin } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { CartProvider } from './context/CartContext';
+import { StoreProvider } from './context/StoreContext';
 import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
 
@@ -151,11 +152,13 @@ function AppContent() {
 export default function App() {
   return (
     <AuthProvider>
-      <CartProvider>
-        <Router>
-          <AppContent />
-        </Router>
-      </CartProvider>
+      <StoreProvider>
+        <CartProvider>
+          <Router>
+            <AppContent />
+          </Router>
+        </CartProvider>
+      </StoreProvider>
     </AuthProvider>
   );
 }
