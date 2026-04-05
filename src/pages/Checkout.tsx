@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, generateWhatsAppLink } from '../lib/utils';
-import { MapPin, Phone, CreditCard, Wallet, Banknote, ArrowRight, CheckCircle2, Clock, MessageCircle, ShoppingBag } from 'lucide-react';
+import { MapPin, Phone, CreditCard, Wallet, Banknote, ArrowRight, CheckCircle2, Clock, MessageCircle, ShoppingBag, Navigation } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import { toast } from 'react-hot-toast';
 import L from 'leaflet';
@@ -22,6 +22,19 @@ let DefaultIcon = L.icon({
 
 L.Marker.prototype.options.icon = DefaultIcon;
 
+const isPointInPolygon = (point: [number, number], polygon: [number, number][]) => {
+  const x = point[0], y = point[1];
+  let inside = false;
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i][0], yi = polygon[i][1];
+    const xj = polygon[j][0], yj = polygon[j][1];
+    const intersect = ((yi > y) !== (yj > y)) &&
+        (x < (xj - xi) * (y - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+};
+
 function LocationMarker({ position, setPosition, onLocationSelect }: { position: L.LatLng | null, setPosition: (pos: L.LatLng) => void, onLocationSelect: (lat: number, lng: number) => void }) {
   const map = useMap();
   
@@ -36,6 +49,16 @@ function LocationMarker({ position, setPosition, onLocationSelect }: { position:
   return position === null ? null : (
     <Marker position={position}></Marker>
   );
+}
+
+function MapController({ position }: { position: L.LatLng | null }) {
+  const map = useMap();
+  useEffect(() => {
+    if (position) {
+      map.flyTo(position, 16);
+    }
+  }, [position, map]);
+  return null;
 }
 
 export default function Checkout() {
@@ -53,6 +76,7 @@ export default function Checkout() {
   const [position, setPosition] = useState<L.LatLng | null>(null);
   const [loading, setLoading] = useState(false);
   const [geocoding, setGeocoding] = useState(false);
+  const [gettingLocation, setGettingLocation] = useState(false);
   const [orderComplete, setOrderComplete] = useState<string | null>(null);
   const [deliveryZones, setDeliveryZones] = useState<any[]>([]);
   const [nearestStore, setNearestStore] = useState<{ name: string, distance: number } | null>(null);
@@ -60,20 +84,6 @@ export default function Checkout() {
   useEffect(() => {
     fetchDeliveryZones();
   }, []);
-
-  const fetchDeliveryZones = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('delivery_zones')
-        .select('*')
-        .eq('is_active', true)
-        .order('name');
-      if (error) throw error;
-      setDeliveryZones(data || []);
-    } catch (error: any) {
-      console.error('Error fetching delivery zones:', error);
-    }
-  };
 
   const handleLocationSelect = async (lat: number, lng: number) => {
     setGeocoding(true);
@@ -117,17 +127,31 @@ export default function Checkout() {
 
         // Find a matching zone
         let matchedZone = null;
-        for (const zone of deliveryZones) {
-          const zoneNeighborhoods = zone.neighborhoods.split(',').map((n: string) => n.trim().toLowerCase());
-          
-          // Check if any neighborhood in the zone matches any term from geocoding
-          const hasMatch = zoneNeighborhoods.some((zn: string) => 
-            searchTerms.some(term => term.includes(zn) || zn.includes(term))
-          );
 
-          if (hasMatch) {
-            matchedZone = zone;
-            break;
+        // 1. Try Polygon match first (more precise)
+        for (const zone of deliveryZones) {
+          if (zone.coordinates && Array.isArray(zone.coordinates) && zone.coordinates.length > 2) {
+            if (isPointInPolygon([lat, lng], zone.coordinates)) {
+              matchedZone = zone;
+              break;
+            }
+          }
+        }
+
+        // 2. Fallback to neighborhood keywords if no polygon match
+        if (!matchedZone) {
+          for (const zone of deliveryZones) {
+            const zoneNeighborhoods = zone.neighborhoods.split(',').map((n: string) => n.trim().toLowerCase());
+            
+            // Check if any neighborhood in the zone matches any term from geocoding
+            const hasMatch = zoneNeighborhoods.some((zn: string) => 
+              searchTerms.some(term => term.includes(zn) || zn.includes(term))
+            );
+
+            if (hasMatch) {
+              matchedZone = zone;
+              break;
+            }
           }
         }
 
@@ -147,6 +171,46 @@ export default function Checkout() {
       console.error('Geocoding error:', error);
     } finally {
       setGeocoding(false);
+    }
+  };
+
+  const handleGetLocation = () => {
+    setGettingLocation(true);
+    if (!navigator.geolocation) {
+      toast.error('La geolocalización no es compatible con tu navegador');
+      setGettingLocation(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const newPos = new L.LatLng(lat, lng);
+        setPosition(newPos);
+        handleLocationSelect(lat, lng);
+        setGettingLocation(false);
+        toast.success('Ubicación obtenida correctamente');
+      },
+      (error) => {
+        console.error('Error getting location:', error);
+        toast.error('No se pudo obtener la ubicación. Por favor, actívala en tu navegador.');
+        setGettingLocation(false);
+      }
+    );
+  };
+
+  const fetchDeliveryZones = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('delivery_zones')
+        .select('*')
+        .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      setDeliveryZones(data || []);
+    } catch (error: any) {
+      console.error('Error fetching delivery zones:', error);
     }
   };
 
@@ -380,7 +444,22 @@ export default function Checkout() {
               Tu Ubicación Exacta
               {geocoding && <span className="text-xs font-normal text-slate-400 animate-pulse">(Detectando zona...)</span>}
             </h2>
-            <p className="text-sm text-slate-500">Haz clic en el mapa para marcar el punto de entrega.</p>
+            <p className="text-sm text-slate-500">Haz clic en el mapa para marcar el punto de entrega o usa el botón de abajo.</p>
+            
+            <button
+              type="button"
+              onClick={handleGetLocation}
+              disabled={gettingLocation}
+              className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 transition-all font-bold ${
+                position 
+                  ? 'border-emerald-500 text-emerald-600 bg-emerald-50' 
+                  : 'border-slate-200 text-slate-600 hover:border-primary hover:text-primary'
+              }`}
+            >
+              <Navigation size={18} className={gettingLocation ? 'animate-spin' : ''} />
+              {gettingLocation ? 'Obteniendo...' : position ? 'Ubicación Detectada ✓' : 'Usar mi ubicación actual'}
+            </button>
+
             <div className="h-[300px] rounded-2xl overflow-hidden border border-slate-100 relative">
               {geocoding && (
                 <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px] z-[1000] flex items-center justify-center">
@@ -392,6 +471,7 @@ export default function Checkout() {
               <MapContainer center={[8.9824, -79.5199]} zoom={13} scrollWheelZoom={false}>
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                 <LocationMarker position={position} setPosition={setPosition} onLocationSelect={handleLocationSelect} />
+                <MapController position={position} />
               </MapContainer>
             </div>
           </div>
@@ -416,7 +496,9 @@ export default function Checkout() {
               <div key={item.product.id} className="flex justify-between items-start gap-4">
                 <div className="flex-1">
                   <p className="font-bold text-white">{item.product.name}</p>
-                  <p className="text-slate-400 text-sm">{item.quantity} x {formatCurrency(item.product.price)}</p>
+                  <p className="text-slate-400 text-sm">
+                    {item.quantity} {item.product.type === 'libra' ? 'lb' : ''} x {formatCurrency(item.product.price)}
+                  </p>
                 </div>
                 <p className="font-bold text-primary-light">{formatCurrency(item.product.price * item.quantity)}</p>
               </div>

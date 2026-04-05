@@ -9,8 +9,9 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
 export default function AdminProducts() {
-  const { profile } = useAuth();
+  const { profile, isAdmin } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
+  const [stores, setStores] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -31,7 +32,24 @@ export default function AdminProducts() {
 
   useEffect(() => {
     fetchProducts();
-  }, [profile?.store_id]);
+    if (isAdmin) {
+      fetchStores();
+    }
+  }, [profile?.store_id, isAdmin]);
+
+  const fetchStores = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('stores')
+        .select('*')
+        .eq('is_active', true)
+        .order('name');
+      if (error) throw error;
+      setStores(data || []);
+    } catch (error) {
+      console.error('Error fetching stores:', error);
+    }
+  };
 
   const fetchProducts = async () => {
     try {
@@ -94,17 +112,27 @@ export default function AdminProducts() {
     setLoading(true);
 
     try {
+      const productData = {
+        ...formData,
+        store_id: profile?.store_id || formData.store_id
+      };
+
       if (editingProduct) {
+        // Security check: Ensure manager is editing their own store's product
+        if (profile?.store_id && editingProduct.store_id !== profile.store_id) {
+          throw new Error('No tienes permiso para editar este producto');
+        }
+
         const { error } = await supabase
           .from('products')
-          .update(formData)
+          .update(productData)
           .eq('id', editingProduct.id);
         if (error) throw error;
         toast.success('Producto actualizado');
       } else {
         const { error } = await supabase
           .from('products')
-          .insert(formData);
+          .insert(productData);
         if (error) throw error;
         toast.success('Producto creado');
       }
@@ -346,6 +374,9 @@ export default function AdminProducts() {
                     <option value="unidad">Unidad</option>
                     <option value="libra">Libra</option>
                     <option value="paquete">Paquete</option>
+                    <option value="kilo">Kilo</option>
+                    <option value="mazo">Mazo</option>
+                    <option value="caja">Caja</option>
                   </select>
                 </div>
                 <div className="space-y-2">
@@ -374,6 +405,7 @@ export default function AdminProducts() {
                   <label className="text-sm font-bold text-slate-700">Stock Inicial</label>
                   <input
                     type="number"
+                    step="0.1"
                     required
                     value={formData.stock}
                     onChange={(e) => setFormData({ ...formData, stock: Number(e.target.value) })}
@@ -413,6 +445,23 @@ export default function AdminProducts() {
                 />
                 <label htmlFor="is_active" className="text-sm font-bold text-slate-700">Producto Activo</label>
               </div>
+
+              {!profile?.store_id && (
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-700">Tienda Asociada</label>
+                  <select
+                    required
+                    value={formData.store_id}
+                    onChange={(e) => setFormData({ ...formData, store_id: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-primary outline-none"
+                  >
+                    <option value="">Selecciona una tienda...</option>
+                    {stores.map(store => (
+                      <option key={store.id} value={store.id}>{store.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
 
               <div className="pt-4 flex gap-4">
                 <button

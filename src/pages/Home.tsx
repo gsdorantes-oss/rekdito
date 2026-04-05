@@ -33,18 +33,35 @@ export default function Home() {
     if (!selectedStore) return;
     setLoading(true);
     try {
+      // Fetch products joined with product_store for the selected store
       const { data, error } = await supabase
-        .from('products')
-        .select('*')
-        .eq('is_active', true)
+        .from('product_store')
+        .select(`
+          price,
+          cost_price,
+          stock,
+          is_active,
+          products (*)
+        `)
         .eq('store_id', selectedStore.id)
-        .order('name');
+        .eq('is_active', true);
 
       if (error) {
         console.error('Supabase error:', error);
         throw error;
       }
-      setProducts(data || []);
+
+      // Map the data to match the Product interface
+      const mappedProducts = (data || []).map((item: any) => ({
+        ...item.products,
+        price: item.price,
+        cost_price: item.cost_price,
+        stock: item.stock,
+        is_active: item.is_active,
+        store_id: selectedStore.id
+      }));
+
+      setProducts(mappedProducts);
     } catch (error: any) {
       console.error('Error fetching products:', error);
       const message = error.message || 'Error al cargar productos';
@@ -103,25 +120,53 @@ export default function Home() {
         </div>
       )}
 
-      {/* Hero Section */}
-      <div className="relative overflow-hidden bg-primary rounded-3xl p-6 md:p-12 text-white shadow-2xl shadow-primary/20">
-        <div className="relative z-10 max-w-2xl">
-          <h1 className="text-3xl md:text-6xl font-black tracking-tight mb-4">
-            Frescura del campo <br /> a tu hogar
-          </h1>
-          <p className="text-primary-light text-base md:text-xl font-medium mb-6 md:mb-8">
-            Frutas, verduras y paquetes mixtos seleccionados con amor.
-          </p>
-          <div className="flex flex-wrap gap-2 md:gap-4">
-            <div className="bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-full text-[10px] md:text-sm font-bold">
-              ✓ Entrega rápida
-            </div>
-            <div className="bg-white/20 backdrop-blur-md px-3 py-1.5 rounded-full text-[10px] md:text-sm font-bold">
-              ✓ Calidad garantizada
+      {/* Hero Section - Ultra compact version */}
+      <div className="relative overflow-hidden rounded-3xl p-3 md:p-6 text-white shadow-lg shadow-emerald-900/5 flex items-center min-h-[120px] md:min-h-[160px]">
+        {/* Background Texture: Green Apple Skin with Water Drops */}
+        <div className="absolute inset-0 z-0">
+          <img 
+            src="https://images.unsplash.com/photo-1567306226416-28f0efdc88ce?auto=format&fit=crop&q=80&w=2070" 
+            alt="Freshness Texture" 
+            className="w-full h-full object-cover"
+            referrerPolicy="no-referrer"
+          />
+          {/* Overlay for readability */}
+          <div className="absolute inset-0 bg-gradient-to-r from-emerald-900/80 via-emerald-800/40 to-transparent"></div>
+        </div>
+
+        <div className="relative z-10 w-full flex flex-row items-center gap-3 md:gap-6">
+          <motion.div 
+            whileHover={{ rotate: 10, scale: 1.1 }}
+            whileTap={{ rotate: -10, scale: 0.9 }}
+            className="w-16 h-16 md:w-24 md:h-24 shrink-0 cursor-pointer"
+          >
+            <img 
+              src="/logo.png" 
+              alt="RECADITO Logo" 
+              className="w-full h-full object-contain drop-shadow-lg"
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                e.currentTarget.src = 'https://cdn-icons-png.flaticon.com/512/3724/3724720.png';
+              }}
+            />
+          </motion.div>
+          <div className="flex-1">
+            <h1 className="text-lg md:text-3xl font-black tracking-tight mb-0.5 md:mb-1 drop-shadow-md leading-tight">
+              Frescura del campo a tu hogar
+            </h1>
+            <p className="text-emerald-50 text-[10px] md:text-sm font-medium mb-2 md:mb-3 drop-shadow-sm max-w-md opacity-90">
+              Frutas, verduras y paquetes seleccionados con amor.
+            </p>
+            <div className="flex flex-wrap gap-1.5">
+              <div className="bg-white/10 backdrop-blur-md px-2 py-0.5 rounded-full text-[8px] md:text-[10px] font-bold border border-white/5">
+                ✓ Entrega rápida
+              </div>
+              <div className="bg-white/10 backdrop-blur-md px-2 py-0.5 rounded-full text-[8px] md:text-[10px] font-bold border border-white/5">
+                ✓ Calidad garantizada
+              </div>
             </div>
           </div>
         </div>
-        <div className="absolute right-0 bottom-0 top-0 w-1/3 bg-white/10 skew-x-12 translate-x-1/2"></div>
       </div>
 
       {/* Search and Filter */}
@@ -186,7 +231,9 @@ export default function Home() {
 }
 
 function ProductCard({ product, onAdd }: { product: Product, onAdd: (product: Product, quantity: number) => void, key?: string }) {
-  const [quantity, setQuantity] = useState(1);
+  const isWeightBased = product.type === 'libra';
+  const step = isWeightBased ? 0.5 : 1;
+  const [quantity, setQuantity] = useState(isWeightBased ? 0.5 : 1);
 
   const handleAdd = () => {
     onAdd(product, quantity);
@@ -198,7 +245,7 @@ function ProductCard({ product, onAdd }: { product: Product, onAdd: (product: Pr
         color: '#fff',
       },
     });
-    setQuantity(1);
+    setQuantity(isWeightBased ? 0.5 : 1);
   };
 
   return (
@@ -234,14 +281,16 @@ function ProductCard({ product, onAdd }: { product: Product, onAdd: (product: Pr
             <span className="text-lg font-black text-primary">{formatCurrency(product.price)}</span>
             <div className="flex items-center bg-slate-50 rounded-lg p-1">
               <button 
-                onClick={() => setQuantity(q => Math.max(1, q - 1))}
+                onClick={() => setQuantity(q => Math.max(step, q - step))}
                 className="p-1 hover:text-primary transition-colors"
               >
                 <Minus size={14} />
               </button>
-              <span className="w-8 text-center text-xs font-bold">{quantity}</span>
+              <span className="w-12 text-center text-xs font-bold">
+                {quantity} {isWeightBased ? 'lb' : ''}
+              </span>
               <button 
-                onClick={() => setQuantity(q => q + 1)}
+                onClick={() => setQuantity(q => q + step)}
                 className="p-1 hover:text-primary transition-colors"
               >
                 <Plus size={14} />

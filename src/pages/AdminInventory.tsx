@@ -210,11 +210,11 @@ export default function AdminInventory() {
                         type="number"
                         step="0.01"
                         value={currentCost}
-                        disabled={!isAdmin}
+                        disabled={!isAdmin && (!profile?.store_id || product.store_id !== profile.store_id)}
                         onChange={(e) => handleInputChange(product.id, 'cost_price', parseFloat(e.target.value))}
                         className={`w-full px-3 py-2 rounded-xl text-sm font-bold outline-none border-2 transition-all ${
                           productChanges.cost_price !== undefined ? 'border-primary bg-primary/5' : 'border-transparent bg-slate-50 focus:border-slate-200'
-                        } ${!isAdmin ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        } ${(!isAdmin && (!profile?.store_id || product.store_id !== profile.store_id)) ? 'opacity-50 cursor-not-allowed' : ''}`}
                       />
                     </td>
                     <td className="px-6 py-4">
@@ -223,11 +223,11 @@ export default function AdminInventory() {
                           type="number"
                           step="0.01"
                           value={currentPrice}
-                          disabled={!isAdmin}
+                          disabled={!isAdmin && (!profile?.store_id || product.store_id !== profile.store_id)}
                           onChange={(e) => handleInputChange(product.id, 'price', parseFloat(e.target.value))}
                           className={`w-full px-3 py-2 rounded-xl text-sm font-bold outline-none border-2 transition-all ${
                             productChanges.price !== undefined ? 'border-primary bg-primary/5' : 'border-transparent bg-slate-50 focus:border-slate-200'
-                          } ${!isAdmin ? 'opacity-50 cursor-not-allowed' : ''}`}
+                          } ${(!isAdmin && (!profile?.store_id || product.store_id !== profile.store_id)) ? 'opacity-50 cursor-not-allowed' : ''}`}
                         />
                         <p className={`text-[10px] font-black text-right ${Number(margin) < 15 ? 'text-red-500' : 'text-emerald-600'}`}>
                           Margen: {margin}%
@@ -238,8 +238,9 @@ export default function AdminInventory() {
                       <div className="flex items-center gap-2">
                         <input 
                           type="number"
+                          step="0.1"
                           value={currentStock}
-                          onChange={(e) => handleInputChange(product.id, 'stock', parseInt(e.target.value))}
+                          onChange={(e) => handleInputChange(product.id, 'stock', parseFloat(e.target.value))}
                           className={`w-full px-3 py-2 rounded-xl text-sm font-bold outline-none border-2 transition-all ${
                             productChanges.stock !== undefined ? 'border-primary bg-primary/5' : 'border-transparent bg-slate-50 focus:border-slate-200'
                           } ${currentStock < 10 ? 'text-red-600' : 'text-slate-900'}`}
@@ -249,14 +250,14 @@ export default function AdminInventory() {
                     </td>
                     <td className="px-6 py-4 text-center">
                       <button 
-                        disabled={!isAdmin}
+                        disabled={!isAdmin && (!profile?.store_id || product.store_id !== profile.store_id)}
                         onClick={() => handleInputChange(product.id, 'is_active', !currentActive)}
                         className={`p-2 rounded-xl transition-all ${
                           currentActive 
                             ? 'bg-emerald-100 text-emerald-600 hover:bg-emerald-200' 
                             : 'bg-slate-100 text-slate-400 hover:bg-slate-200'
-                        } ${!isAdmin ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        title={isAdmin ? (currentActive ? 'Desactivar' : 'Activar') : 'Solo administradores pueden cambiar el estado'}
+                        } ${(!isAdmin && (!profile?.store_id || product.store_id !== profile.store_id)) ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        title={isAdmin || (profile?.store_id && product.store_id === profile.store_id) ? (currentActive ? 'Desactivar' : 'Activar') : 'No tienes permiso para cambiar el estado'}
                       >
                         {currentActive ? <Eye size={20} /> : <EyeOff size={20} />}
                       </button>

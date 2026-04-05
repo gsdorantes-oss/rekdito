@@ -1,4 +1,4 @@
-export type ProductType = 'unidad' | 'libra' | 'paquete';
+export type ProductType = 'unidad' | 'libra' | 'paquete' | 'kilo' | 'mazo' | 'caja';
 
 export interface Product {
   id: string;
@@ -74,5 +74,9 @@ export interface DeliveryZone {
   neighborhoods: string;
   is_active: boolean;
   store_id?: string;
+  lat?: number;
+  lng?: number;
+  radius_km?: number;
+  coordinates?: [number, number][];
   created_at: string;
 }

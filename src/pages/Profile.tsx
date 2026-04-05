@@ -5,18 +5,69 @@ import { Order } from '../types/database';
 import { formatCurrency } from '../lib/utils';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Package, ChevronRight, User, Phone, MapPin, LogOut, LayoutDashboard } from 'lucide-react';
+import { Package, ChevronRight, User, Phone, MapPin, LogOut, LayoutDashboard, RefreshCw, Navigation } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
 
 export default function Profile() {
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, signOut, refreshProfile } = useAuth();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [updatingLocation, setUpdatingLocation] = useState(false);
 
   useEffect(() => {
     if (user) fetchOrders();
   }, [user]);
+
+  const handleUpdateLocation = () => {
+    setUpdatingLocation(true);
+    if (!navigator.geolocation) {
+      toast.error('La geolocalización no es compatible');
+      setUpdatingLocation(false);
+      return;
+    }
+
+    navigator.geolocation.getCurrentPosition(
+      async (position) => {
+        try {
+          const { error } = await supabase
+            .from('profiles')
+            .update({
+              lat: position.coords.latitude,
+              lng: position.coords.longitude
+            })
+            .eq('id', user?.id);
+
+          if (error) throw error;
+          
+          toast.success('Ubicación y tienda actualizada');
+          await refreshProfile();
+        } catch (error: any) {
+          toast.error('Error al actualizar ubicación');
+        } finally {
+          setUpdatingLocation(false);
+        }
+      },
+      (error) => {
+        toast.error('No se pudo obtener la ubicación');
+        setUpdatingLocation(false);
+      }
+    );
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await refreshProfile();
+      await fetchOrders();
+      toast.success('Perfil actualizado');
+    } catch (error) {
+      toast.error('Error al actualizar perfil');
+    } finally {
+      setRefreshing(false);
+    }
+  };
 
   const fetchOrders = async () => {
     try {
@@ -71,10 +122,18 @@ export default function Profile() {
             </div>
             <h2 className="text-xl font-black text-slate-900">{profile?.full_name}</h2>
             <p className="text-sm text-slate-500 mb-2">{user?.email}</p>
-            <div className="mb-6">
+            <div className="mb-6 flex flex-col items-center gap-2">
               <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${profile?.role === 'admin' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}`}>
                 Rol: {profile?.role || 'Cargando...'}
               </span>
+              <button 
+                onClick={handleRefresh}
+                disabled={refreshing}
+                className="text-[10px] font-bold text-primary hover:underline flex items-center gap-1 disabled:opacity-50"
+              >
+                <RefreshCw size={10} className={refreshing ? 'animate-spin' : ''} />
+                Actualizar datos
+              </button>
             </div>
             
             <div className="space-y-3 text-left">
@@ -86,6 +145,18 @@ export default function Profile() {
                 <MapPin size={16} className="text-slate-400" />
                 <span className="truncate">{profile?.address || 'Sin dirección registrada'}</span>
               </div>
+              
+              <button
+                onClick={handleUpdateLocation}
+                disabled={updatingLocation}
+                className="w-full flex items-center justify-center gap-2 py-2 px-4 mt-4 text-xs font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 rounded-xl transition-all disabled:opacity-50 border border-slate-200"
+              >
+                <Navigation size={14} className={updatingLocation ? 'animate-spin' : ''} />
+                {updatingLocation ? 'Actualizando...' : 'Actualizar mi ubicación'}
+              </button>
+              <p className="text-[9px] text-slate-400 italic text-center px-2">
+                * Actualiza tu ubicación para reasignarte la tienda más cercana.
+              </p>
             </div>
 
             {profile?.role === 'admin' && (

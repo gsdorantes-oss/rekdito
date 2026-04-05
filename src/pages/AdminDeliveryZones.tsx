@@ -1,11 +1,42 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { DeliveryZone } from '../types/database';
 import { formatCurrency } from '../lib/utils';
-import { Plus, Search, Edit2, Trash2, MapPin, X, Eye, EyeOff, Save } from 'lucide-react';
+import { Plus, Search, Edit2, Trash2, MapPin, X, Eye, EyeOff, Save, Map as MapIcon, Trash } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { MapContainer, TileLayer, Polygon, Marker, useMapEvents, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
 import { useAuth } from '../context/AuthContext';
+
+// Fix Leaflet icon issue
+import icon from 'leaflet/dist/images/marker-icon.png';
+import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+let DefaultIcon = L.icon({
+    iconUrl: icon,
+    shadowUrl: iconShadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41]
+});
+L.Marker.prototype.options.icon = DefaultIcon;
+
+function MapController({ center }: { center: [number, number] }) {
+  const map = useMap();
+  useEffect(() => {
+    map.setView(center, 13);
+  }, [center, map]);
+  return null;
+}
+
+function MapEvents({ onMapClick }: { onMapClick: (latlng: L.LatLng) => void }) {
+  useMapEvents({
+    click: (e) => {
+      onMapClick(e.latlng);
+    },
+  });
+  return null;
+}
 
 export default function AdminDeliveryZones() {
   const { profile } = useAuth();
@@ -21,8 +52,23 @@ export default function AdminDeliveryZones() {
     price: 0,
     neighborhoods: '',
     store_id: '',
-    is_active: true
+    is_active: true,
+    coordinates: [] as [number, number][]
   });
+
+  const selectedStoreData = useMemo(() => {
+    return stores.find(s => s.id === formData.store_id);
+  }, [formData.store_id, stores]);
+
+  const mapCenter = useMemo((): [number, number] => {
+    if (formData.coordinates.length > 0) {
+      return formData.coordinates[0];
+    }
+    if (selectedStoreData?.lat && selectedStoreData?.lng) {
+      return [selectedStoreData.lat, selectedStoreData.lng];
+    }
+    return [8.8875, -79.7833]; // Default Panama West
+  }, [formData.coordinates, selectedStoreData]);
 
   useEffect(() => {
     fetchZones();
@@ -82,7 +128,8 @@ export default function AdminDeliveryZones() {
         price: zone.price,
         neighborhoods: zone.neighborhoods,
         store_id: zone.store_id || '',
-        is_active: zone.is_active
+        is_active: zone.is_active,
+        coordinates: zone.coordinates || []
       });
     } else {
       setEditingZone(null);
@@ -91,7 +138,8 @@ export default function AdminDeliveryZones() {
         price: 0,
         neighborhoods: '',
         store_id: stores[0]?.id || '',
-        is_active: true
+        is_active: true,
+        coordinates: []
       });
     }
     setIsModalOpen(true);
@@ -102,17 +150,26 @@ export default function AdminDeliveryZones() {
     setLoading(true);
 
     try {
+      const zoneData = {
+        ...formData,
+        store_id: profile?.store_id || formData.store_id
+      };
+
       if (editingZone) {
+        if (profile?.store_id && editingZone.store_id !== profile.store_id) {
+          throw new Error('No tienes permiso para editar esta zona');
+        }
+
         const { error } = await supabase
           .from('delivery_zones')
-          .update(formData)
+          .update(zoneData)
           .eq('id', editingZone.id);
         if (error) throw error;
         toast.success('Zona actualizada');
       } else {
         const { error } = await supabase
           .from('delivery_zones')
-          .insert(formData);
+          .insert(zoneData);
         if (error) throw error;
         toast.success('Zona creada');
       }
@@ -153,6 +210,17 @@ export default function AdminDeliveryZones() {
     }
   };
 
+  const handleMapClick = (latlng: L.LatLng) => {
+    setFormData(prev => ({
+      ...prev,
+      coordinates: [...prev.coordinates, [latlng.lat, latlng.lng]]
+    }));
+  };
+
+  const clearCoordinates = () => {
+    setFormData(prev => ({ ...prev, coordinates: [] }));
+  };
+
   const filteredZones = zones.filter(z => 
     z.name.toLowerCase().includes(search.toLowerCase()) ||
     z.neighborhoods.toLowerCase().includes(search.toLowerCase())
@@ -163,7 +231,7 @@ export default function AdminDeliveryZones() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black text-slate-900">Zonas de Entrega</h1>
-          <p className="text-slate-500 font-medium">Personaliza los precios y barriadas por zona</p>
+          <p className="text-slate-500 font-medium">Configura las áreas de cobertura y precios por tienda</p>
         </div>
         <button 
           onClick={() => handleOpenModal()}
@@ -199,7 +267,7 @@ export default function AdminDeliveryZones() {
                     <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">Nombre de Zona</th>
                     <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">Tienda</th>
                     <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">Precio</th>
-                    <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">Barriadas / Sectores</th>
+                    <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-widest text-center">Cobertura Map</th>
                     <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-widest">Estado</th>
                     <th className="px-6 py-4 text-xs font-black text-slate-400 uppercase tracking-widest text-right">Acciones</th>
                   </tr>
@@ -216,10 +284,15 @@ export default function AdminDeliveryZones() {
                       <td className="px-6 py-4">
                         <span className="font-black text-primary">{formatCurrency(zone.price)}</span>
                       </td>
-                      <td className="px-6 py-4">
-                        <p className="text-sm text-slate-600 line-clamp-2 max-w-md">
-                          {zone.neighborhoods}
-                        </p>
+                      <td className="px-6 py-4 text-center">
+                        {zone.coordinates && zone.coordinates.length > 0 ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-lg text-[10px] font-black uppercase">
+                            <MapPin size={12} />
+                            {zone.coordinates.length} Puntos
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold text-slate-400 uppercase">Solo Texto</span>
+                        )}
                       </td>
                       <td className="px-6 py-4">
                         <button 
@@ -265,8 +338,8 @@ export default function AdminDeliveryZones() {
 
       {/* Modal */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-xl rounded-[2rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white w-full max-w-4xl rounded-[2rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 my-8">
             <div className="p-6 border-b border-slate-100 flex items-center justify-between">
               <h2 className="text-2xl font-black text-slate-900">
                 {editingZone ? 'Editar Zona' : 'Nueva Zona'}
@@ -277,69 +350,129 @@ export default function AdminDeliveryZones() {
             </div>
             
             <form onSubmit={handleSubmit} className="p-8 space-y-6">
-              <div className="grid sm:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-700">Nombre de la Zona</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Ej: Zona 1 - Costa Verde"
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-primary outline-none"
-                  />
+              <div className="grid md:grid-cols-2 gap-8">
+                <div className="space-y-6">
+                  <div className="grid sm:grid-cols-2 gap-6">
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-slate-700">Nombre de la Zona</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Ej: Zona 1 - Costa Verde"
+                        value={formData.name}
+                        onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-primary outline-none"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-slate-700">Precio de Envío</label>
+                      <input
+                        type="number"
+                        step="0.01"
+                        required
+                        value={formData.price}
+                        onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
+                        className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-primary outline-none"
+                      />
+                    </div>
+                  </div>
+
+                  {!profile?.store_id && (
+                    <div className="space-y-2">
+                      <label className="text-sm font-bold text-slate-700">Tienda Asociada</label>
+                      <select
+                        required
+                        value={formData.store_id}
+                        onChange={(e) => setFormData({ ...formData, store_id: e.target.value })}
+                        className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-primary outline-none appearance-none"
+                      >
+                        <option value="">Selecciona una tienda...</option>
+                        {stores.map(store => (
+                          <option key={store.id} value={store.id}>{store.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-slate-700">Barriadas / Sectores (Texto)</label>
+                    <textarea
+                      required
+                      placeholder="Ej: Montelimar, Uni-Plaza, Mastranto..."
+                      value={formData.neighborhoods}
+                      onChange={(e) => setFormData({ ...formData, neighborhoods: e.target.value })}
+                      className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-primary outline-none min-h-[80px]"
+                    />
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="is_active"
+                      checked={formData.is_active}
+                      onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                      className="w-5 h-5 rounded border-slate-300 text-primary focus:ring-primary"
+                    />
+                    <label htmlFor="is_active" className="text-sm font-bold text-slate-700">Zona Activa</label>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-bold text-slate-700">Precio de Envío</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={formData.price}
-                    onChange={(e) => setFormData({ ...formData, price: Number(e.target.value) })}
-                    className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-primary outline-none"
-                  />
+
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <label className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                      <MapIcon size={18} className="text-primary" />
+                      Definir Cobertura en Mapa
+                    </label>
+                    {formData.coordinates.length > 0 && (
+                      <button 
+                        type="button"
+                        onClick={clearCoordinates}
+                        className="text-[10px] font-black text-red-500 uppercase flex items-center gap-1 hover:underline"
+                      >
+                        <Trash size={12} /> Limpiar Puntos
+                      </button>
+                    )}
+                  </div>
+                  
+                  <div className="h-[300px] rounded-2xl overflow-hidden border border-slate-100 shadow-inner relative">
+                    <MapContainer 
+                      center={mapCenter} 
+                      zoom={13} 
+                      className="h-full w-full"
+                    >
+                      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                      <MapController center={mapCenter} />
+                      <MapEvents onMapClick={handleMapClick} />
+                      
+                      {formData.coordinates.length > 0 && (
+                        <Polygon 
+                          positions={formData.coordinates} 
+                          pathOptions={{ color: '#fbbf24', fillColor: '#fbbf24', fillOpacity: 0.3 }} 
+                        />
+                      )}
+                      
+                      {formData.coordinates.map((coord, idx) => (
+                        <Marker key={idx} position={coord} />
+                      ))}
+
+                      {selectedStoreData?.lat && (
+                        <Marker 
+                          position={[selectedStoreData.lat, selectedStoreData.lng]} 
+                          icon={L.divIcon({
+                            className: 'bg-primary w-4 h-4 rounded-full border-2 border-white shadow-lg',
+                            html: ''
+                          })}
+                        />
+                      )}
+                    </MapContainer>
+                    <div className="absolute bottom-4 left-4 right-4 z-[1000] bg-white/90 backdrop-blur-md p-2 rounded-lg border border-slate-100 text-[10px] font-medium text-slate-600 shadow-lg">
+                      Haz clic en el mapa para añadir puntos y definir el área de cobertura.
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400 italic">
+                    * El polígono dibujado servirá para validar si la ubicación del cliente está dentro de la zona de cobertura.
+                  </p>
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700">Tienda Asociada</label>
-                <select
-                  required
-                  value={formData.store_id}
-                  onChange={(e) => setFormData({ ...formData, store_id: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-primary outline-none appearance-none"
-                >
-                  <option value="">Selecciona una tienda...</option>
-                  {stores.map(store => (
-                    <option key={store.id} value={store.id}>{store.name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700">Barriadas / Sectores Incluidos</label>
-                <textarea
-                  required
-                  placeholder="Ej: Montelimar, Uni-Plaza, Mastranto..."
-                  value={formData.neighborhoods}
-                  onChange={(e) => setFormData({ ...formData, neighborhoods: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-primary outline-none min-h-[120px]"
-                />
-                <p className="text-xs text-slate-400 italic">
-                  Separa las barriadas por comas. El sistema usará estos nombres para detectar la zona automáticamente en el mapa.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="is_active"
-                  checked={formData.is_active}
-                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                  className="w-5 h-5 rounded border-slate-300 text-primary focus:ring-primary"
-                />
-                <label htmlFor="is_active" className="text-sm font-bold text-slate-700">Zona Activa</label>
               </div>
 
               <div className="pt-4 flex gap-4">
@@ -366,3 +499,4 @@ export default function AdminDeliveryZones() {
     </div>
   );
 }
+

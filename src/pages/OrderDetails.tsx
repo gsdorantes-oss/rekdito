@@ -164,7 +164,9 @@ export default function OrderDetails() {
                   <div key={item.id} className="flex justify-between items-center">
                     <div>
                       <p className="font-bold text-slate-900">{item.products?.name}</p>
-                      <p className="text-xs text-slate-500">{item.quantity} x {formatCurrency(item.unit_price)}</p>
+                      <p className="text-xs text-slate-500">
+                        {item.quantity} {item.products?.type === 'libra' ? 'lb' : ''} x {formatCurrency(item.unit_price)}
+                      </p>
                     </div>
                     <p className="font-bold text-slate-900">{formatCurrency(item.subtotal)}</p>
                   </div>

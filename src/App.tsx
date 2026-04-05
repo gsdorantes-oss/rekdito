@@ -7,11 +7,14 @@ import { CartProvider } from './context/CartContext';
 import { StoreProvider } from './context/StoreContext';
 import Navbar from './components/Navbar';
 import BottomNav from './components/BottomNav';
+import OrderNotificationListener from './components/OrderNotificationListener';
+import ClientOrderNotificationListener from './components/ClientOrderNotificationListener';
 
 // Pages (to be created)
 import Home from './pages/Home';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ResetPassword from './pages/ResetPassword';
 import Cart from './pages/Cart';
 import Checkout from './pages/Checkout';
 import Profile from './pages/Profile';
@@ -84,6 +87,14 @@ function AdminFloatingMenu() {
             <TrendingUp size={18} className="text-emerald-600" />
             <span className="text-xs font-black uppercase tracking-wider">Finanzas</span>
           </Link>
+          <Link 
+            to="/admin/delivery-zones"
+            onClick={() => setIsOpen(false)}
+            className="bg-white text-slate-900 px-4 py-2 rounded-xl shadow-2xl hover:bg-slate-50 transition-all flex items-center gap-2 border-2 border-slate-900/10 backdrop-blur-md"
+          >
+            <MapPin size={18} className="text-amber-600" />
+            <span className="text-xs font-black uppercase tracking-wider">Zonas</span>
+          </Link>
           {isAdmin && (
             <>
               <Link 
@@ -128,6 +139,7 @@ function AppContent() {
           <Route path="/" element={<Home />} />
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
+          <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="/cart" element={<Cart />} />
           
           <Route path="/checkout" element={
@@ -193,6 +205,8 @@ function AppContent() {
       </main>
       <BottomNav />
       <AdminFloatingMenu />
+      <OrderNotificationListener />
+      <ClientOrderNotificationListener />
 
       <Toaster position="bottom-right" />
     </div>

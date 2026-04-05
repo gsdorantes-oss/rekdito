@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import { motion } from 'motion/react';
 import { ShoppingCart, User, LogOut, LayoutDashboard, Store, ShoppingBag, TrendingUp, Leaf } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
@@ -18,18 +19,21 @@ export default function Navbar() {
         <div className="flex justify-between h-16 items-center">
           <div className="flex items-center gap-2">
             <Link to="/" className="flex items-center gap-2 group">
-              <div className="w-12 h-12 group-hover:scale-110 transition-transform duration-300">
+              <motion.div 
+                whileHover={{ rotate: 15, scale: 1.1 }}
+                whileTap={{ rotate: -15, scale: 0.9 }}
+                className="w-12 h-12 transition-transform duration-300"
+              >
                 <img 
                   src="/logo.png" 
                   alt="RECADITO Logo" 
                   className="w-full h-full object-contain drop-shadow-xl"
                   referrerPolicy="no-referrer"
                   onError={(e) => {
-                    // Fallback if logo.png doesn't exist
                     e.currentTarget.src = 'https://cdn-icons-png.flaticon.com/512/3724/3724720.png';
                   }}
                 />
-              </div>
+              </motion.div>
               <div className="flex flex-col">
                 <span className="text-xl md:text-2xl font-black tracking-tighter text-slate-900 leading-none">RECADITO</span>
                 <span className="text-[10px] font-bold text-primary tracking-[0.2em] uppercase leading-none mt-1">

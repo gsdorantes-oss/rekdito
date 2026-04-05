@@ -11,6 +11,7 @@ interface AuthContextType {
   isManager: boolean;
   managedStoreId: string | null;
   signOut: () => Promise<void>;
+  refreshProfile: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -32,7 +33,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     // Listen for changes on auth state (logged in, signed out, etc.)
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null);
       if (session?.user) {
         fetchProfile(session.user.id);
@@ -42,8 +43,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      authSubscription.unsubscribe();
+    };
   }, []);
+
+  // Set up real-time subscription for the profile
+  useEffect(() => {
+    if (!user) return;
+
+    const profileSubscription = supabase
+      .channel(`profile:${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'profiles',
+          filter: `id=eq.${user.id}`,
+        },
+        (payload) => {
+          if (payload.new) {
+            setProfile(payload.new as Profile);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      profileSubscription.unsubscribe();
+    };
+  }, [user]);
 
   const fetchProfile = async (userId: string) => {
     try {
@@ -51,7 +81,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         .from('profiles')
         .select('*')
         .eq('id', userId)
-        .single();
+        .maybeSingle(); // Use maybeSingle to avoid error if profile doesn't exist yet
 
       if (error) throw error;
       setProfile(data);
@@ -66,12 +96,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
   };
 
+  const refreshProfile = async () => {
+    if (user) await fetchProfile(user.id);
+  };
+
   const isAdmin = profile?.role === 'admin';
   const isManager = profile?.role === 'manager';
   const managedStoreId = profile?.store_id || null;
 
   return (
-    <AuthContext.Provider value={{ user, profile, loading, isAdmin, isManager, managedStoreId, signOut }}>
+    <AuthContext.Provider value={{ user, profile, loading, isAdmin, isManager, managedStoreId, signOut, refreshProfile }}>
       {children}
     </AuthContext.Provider>
   );

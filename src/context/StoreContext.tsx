@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { Store } from '../types/database';
+import { useAuth } from './AuthContext';
 
 interface StoreContextType {
   selectedStore: Store | null;
@@ -12,6 +13,7 @@ interface StoreContextType {
 const StoreContext = createContext<StoreContextType | undefined>(undefined);
 
 export function StoreProvider({ children }: { children: React.ReactNode }) {
+  const { profile } = useAuth();
   const [selectedStore, setSelectedStore] = useState<Store | null>(() => {
     const saved = localStorage.getItem('selected_store');
     return saved ? JSON.parse(saved) : null;
@@ -31,6 +33,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     }
   }, [selectedStore]);
 
+  // Auto-select store from profile if available
+  useEffect(() => {
+    if (profile?.store_id && stores.length > 0) {
+      const profileStore = stores.find(s => s.id === profile.store_id);
+      if (profileStore && (!selectedStore || selectedStore.id !== profileStore.id)) {
+        setSelectedStore(profileStore);
+      }
+    }
+  }, [profile, stores]);
+
   const fetchStores = async () => {
     try {
       const { data, error } = await supabase
@@ -40,11 +52,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         .order('name');
       
       if (error) throw error;
-      setStores(data || []);
+      const fetchedStores = data || [];
+      setStores(fetchedStores);
       
       // If only one store, select it automatically
-      if (data?.length === 1 && !selectedStore) {
-        setSelectedStore(data[0]);
+      if (fetchedStores.length === 1 && !selectedStore) {
+        setSelectedStore(fetchedStores[0]);
       }
     } catch (error) {
       console.error('Error fetching stores:', error);

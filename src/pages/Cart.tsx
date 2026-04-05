@@ -62,14 +62,16 @@ export default function Cart() {
                   <div className="flex items-center gap-4">
                     <div className="flex items-center bg-slate-50 rounded-lg p-1">
                       <button 
-                        onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
+                        onClick={() => updateQuantity(item.product.id, item.quantity - (item.product.type === 'libra' ? 0.5 : 1))}
                         className="p-1 hover:text-primary transition-colors"
                       >
                         <Minus size={14} />
                       </button>
-                      <span className="w-10 text-center text-sm font-bold">{item.quantity}</span>
+                      <span className="w-12 text-center text-sm font-bold">
+                        {item.quantity} {item.product.type === 'libra' ? 'lb' : ''}
+                      </span>
                       <button 
-                        onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
+                        onClick={() => updateQuantity(item.product.id, item.quantity + (item.product.type === 'libra' ? 0.5 : 1))}
                         className="p-1 hover:text-primary transition-colors"
                       >
                         <Plus size={14} />

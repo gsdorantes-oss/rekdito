@@ -1,10 +1,19 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useStore } from '../context/StoreContext';
-import { MapPin, ChevronRight, Store as StoreIcon } from 'lucide-react';
+import { MapPin, ChevronRight, Store as StoreIcon, Navigation } from 'lucide-react';
 import { motion } from 'motion/react';
+import { useAuth } from '../context/AuthContext';
 
 export default function StoreSelector() {
   const { stores, setSelectedStore, loading } = useStore();
+  const { profile } = useAuth();
+
+  const filteredStores = useMemo(() => {
+    if (profile?.store_id) {
+      return stores.filter(s => s.id === profile.store_id);
+    }
+    return stores;
+  }, [stores, profile]);
 
   if (loading) {
     return (
@@ -18,11 +27,20 @@ export default function StoreSelector() {
     <div className="max-w-4xl mx-auto py-12 px-4">
       <div className="text-center mb-12">
         <h1 className="text-4xl font-black text-slate-900 mb-4">Bienvenido a Recadito</h1>
-        <p className="text-slate-500 text-lg font-medium">Selecciona la tienda más cercana a tu ubicación</p>
+        <p className="text-slate-500 text-lg font-medium">
+          {profile?.store_id 
+            ? 'Hemos seleccionado la tienda más cercana para ti' 
+            : 'Selecciona la tienda más cercana a tu ubicación'}
+        </p>
+        {!profile?.store_id && (
+          <p className="text-xs text-slate-400 mt-2 italic">
+            * Inicia sesión para asignar automáticamente tu tienda más cercana.
+          </p>
+        )}
       </div>
 
-      <div className="grid md:grid-cols-2 gap-6">
-        {stores.map((store) => (
+      <div className={`grid ${filteredStores.length === 1 ? 'max-w-md mx-auto' : 'md:grid-cols-2'} gap-6`}>
+        {filteredStores.map((store) => (
           <motion.button
             key={store.id}
             whileHover={{ scale: 1.02 }}
@@ -52,7 +70,7 @@ export default function StoreSelector() {
         ))}
       </div>
 
-      {stores.length === 0 && (
+      {filteredStores.length === 0 && (
         <div className="text-center py-20 bg-white rounded-[2.5rem] border border-slate-100">
           <p className="text-slate-500 font-bold">No hay tiendas disponibles en este momento.</p>
         </div>
@@ -60,3 +78,4 @@ export default function StoreSelector() {
     </div>
   );
 }
+

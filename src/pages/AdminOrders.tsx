@@ -40,9 +40,11 @@ export default function AdminOrders() {
 
   const fetchOrders = async () => {
     try {
+      setLoading(true);
+      // Intentamos la consulta completa con joins
       let query = supabase
         .from('orders')
-        .select('*, profiles(*), stores(name)')
+        .select('*, profiles!user_id(full_name), stores(name)')
         .order('created_at', { ascending: false });
 
       if (profile?.store_id) {
@@ -51,27 +53,27 @@ export default function AdminOrders() {
 
       const { data, error } = await query;
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error en consulta completa:', error);
+        // Fallback: Si falla el join, traemos solo los pedidos básicos pero mantenemos el filtro de seguridad
+        let fallbackQuery = supabase
+          .from('orders')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-      // Sort orders by status priority: Pendiente > Preparando > En camino > Entregado
-      const statusPriority: Record<string, number> = {
-        'Pendiente': 0,
-        'Preparando': 1,
-        'En camino': 2,
-        'Entregado': 3,
-        'Cancelado': 4
-      };
-
-      const sortedData = (data || []).sort((a, b) => {
-        if (statusPriority[a.status] !== statusPriority[b.status]) {
-          return statusPriority[a.status] - statusPriority[b.status];
+        if (profile?.store_id) {
+          fallbackQuery = fallbackQuery.eq('store_id', profile.store_id);
         }
-        return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      });
 
-      setOrders(sortedData);
-    } catch (error) {
-      toast.error('Error al cargar pedidos');
+        const { data: fallbackData, error: fallbackError } = await fallbackQuery;
+        if (fallbackError) throw fallbackError;
+        setOrders(fallbackData || []);
+      } else {
+        setOrders(data || []);
+      }
+    } catch (error: any) {
+      console.error('Error crítico cargando pedidos:', error);
+      toast.error('Error al cargar pedidos: ' + (error.message || 'Error de conexión'));
     } finally {
       setLoading(false);
     }
