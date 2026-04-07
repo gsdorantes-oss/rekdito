@@ -11,7 +11,11 @@ import {
   PieChart as PieChartIcon,
   BarChart as BarChartIcon,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Download,
+  FileText,
+  MapPin,
+  ChevronDown
 } from 'lucide-react';
 import { 
   BarChart, 
@@ -29,9 +33,11 @@ import { startOfWeek, endOfWeek, subWeeks, format, isWithinInterval, parseISO } 
 import { es } from 'date-fns/locale';
 
 import { useAuth } from '../context/AuthContext';
+import { useStore } from '../context/StoreContext';
 
 export default function AdminFinances() {
   const { profile, isAdmin } = useAuth();
+  const { selectedStore, stores, setSelectedStore } = useStore();
   const [loading, setLoading] = useState(true);
   const [selectedWeek, setSelectedWeek] = useState(0); // 0 = current week, 1 = last week, etc.
   const [data, setData] = useState({
@@ -41,17 +47,20 @@ export default function AdminFinances() {
     loss: 0, // Potential loss from unsold stock or expired items (if we had that data)
     ordersCount: 0,
     dailyStats: [] as any[],
-    categoryStats: [] as any[]
+    categoryStats: [] as any[],
+    deliveryTypeStats: [] as any[],
+    rawOrders: [] as any[]
   });
 
   useEffect(() => {
     fetchFinancialData();
-  }, [selectedWeek]);
+  }, [selectedWeek, profile?.store_id, selectedStore?.id]);
 
   const fetchFinancialData = async () => {
     if (!profile?.store_id && !isAdmin) return;
     setLoading(true);
     try {
+      const effectiveStoreId = isAdmin ? selectedStore?.id : profile?.store_id;
       const now = new Date();
       const weekStart = startOfWeek(subWeeks(now, selectedWeek), { weekStartsOn: 1 });
       const weekEnd = endOfWeek(subWeeks(now, selectedWeek), { weekStartsOn: 1 });
@@ -63,8 +72,8 @@ export default function AdminFinances() {
         .gte('created_at', weekStart.toISOString())
         .lte('created_at', weekEnd.toISOString());
 
-      if (profile?.store_id) {
-        query = query.eq('store_id', profile.store_id);
+      if (effectiveStoreId) {
+        query = query.eq('store_id', effectiveStoreId);
       }
 
       const { data: orders, error: ordersError } = await query;
@@ -77,9 +86,20 @@ export default function AdminFinances() {
       let investment = 0;
       let profit = 0;
       const categoryMap: Record<string, { revenue: number, profit: number }> = {};
+      const deliveryTypeMap: Record<string, { revenue: number, count: number }> = {
+        'delivery': { revenue: 0, count: 0 },
+        'pickup': { revenue: 0, count: 0 },
+        'in_store': { revenue: 0, count: 0 }
+      };
 
       deliveredOrders.forEach(order => {
         revenue += Number(order.total);
+        
+        const type = order.delivery_type || 'delivery';
+        if (deliveryTypeMap[type]) {
+          deliveryTypeMap[type].revenue += Number(order.total);
+          deliveryTypeMap[type].count += 1;
+        }
         
         order.order_items?.forEach((item: any) => {
           const cost = item.products?.cost_price || 0;
@@ -126,6 +146,12 @@ export default function AdminFinances() {
         profit: stats.profit
       }));
 
+      const deliveryTypeStats = Object.entries(deliveryTypeMap).map(([name, stats]) => ({
+        name: name === 'delivery' ? 'Domicilio' : name === 'pickup' ? 'Retiro' : 'En Tienda',
+        value: stats.revenue,
+        count: stats.count
+      }));
+
       setData({
         revenue,
         investment,
@@ -133,7 +159,9 @@ export default function AdminFinances() {
         loss: 0, // We don't have a direct "loss" metric in the DB yet, but we could add it
         ordersCount: deliveredOrders.length,
         dailyStats,
-        categoryStats
+        categoryStats,
+        deliveryTypeStats,
+        rawOrders: orders || []
       });
 
     } catch (error) {
@@ -148,6 +176,55 @@ export default function AdminFinances() {
     const start = startOfWeek(subWeeks(now, selectedWeek), { weekStartsOn: 1 });
     const end = endOfWeek(subWeeks(now, selectedWeek), { weekStartsOn: 1 });
     return `${format(start, 'd MMM', { locale: es })} - ${format(end, 'd MMM', { locale: es })}`;
+  };
+
+  const exportOrdersCSV = () => {
+    if (data.rawOrders.length === 0) return;
+    
+    const headers = ['ID', 'Fecha', 'Cliente', 'Teléfono', 'Total', 'Estado', 'Método Pago', 'Tienda'];
+    const rows = data.rawOrders.map(order => [
+      order.id.slice(0, 8),
+      format(new Date(order.created_at), 'yyyy-MM-dd HH:mm'),
+      order.user_id || 'Invitado',
+      order.phone_contact,
+      order.total,
+      order.status,
+      order.payment_method,
+      order.store_id || 'Global'
+    ]);
+
+    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `pedidos_${weekRange().replace(/ /g, '_')}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportFinancesCSV = () => {
+    const headers = ['Métrica', 'Valor'];
+    const rows = [
+      ['Ingresos Brutos', data.revenue],
+      ['Inversión (Costo)', data.investment],
+      ['Ganancia Neta', data.profit],
+      ['Cantidad de Pedidos', data.ordersCount],
+      ['Rentabilidad %', data.revenue > 0 ? ((data.profit / data.revenue) * 100).toFixed(2) : 0]
+    ];
+
+    const csvContent = [headers, ...rows].map(e => e.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `finanzas_${weekRange().replace(/ /g, '_')}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   if (loading) {
@@ -165,6 +242,34 @@ export default function AdminFinances() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black text-slate-900">Finanzas Semanales</h1>
+          {isAdmin && (
+            <div className="relative group/store mt-2">
+              <button className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all shadow-sm">
+                <MapPin size={14} className="text-primary" />
+                {selectedStore?.name || 'Todas las Tiendas'}
+                <ChevronDown size={14} />
+              </button>
+              <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 opacity-0 invisible group-hover/store:opacity-100 group-hover/store:visible transition-all z-50">
+                <button 
+                  onClick={() => setSelectedStore(null)}
+                  className="w-full text-left px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-primary transition-colors"
+                >
+                  Todas las Tiendas (Global)
+                </button>
+                {stores.map(store => (
+                  <button 
+                    key={store.id}
+                    onClick={() => setSelectedStore(store)}
+                    className={`w-full text-left px-4 py-2 text-xs font-bold transition-colors ${
+                      selectedStore?.id === store.id ? 'bg-primary/5 text-primary' : 'text-slate-600 hover:bg-slate-50 hover:text-primary'
+                    }`}
+                  >
+                    {store.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <p className="text-slate-500 font-medium">Análisis de ingresos y rentabilidad</p>
         </div>
         
@@ -187,6 +292,23 @@ export default function AdminFinances() {
             className="p-2 hover:bg-slate-50 rounded-xl text-slate-400 transition-colors disabled:opacity-20"
           >
             <ChevronRight size={20} />
+          </button>
+        </div>
+
+        <div className="flex gap-3">
+          <button 
+            onClick={exportFinancesCSV}
+            className="bg-white border border-slate-200 text-slate-600 px-6 py-3 rounded-2xl font-bold hover:bg-slate-50 transition-all flex items-center gap-2"
+          >
+            <FileText size={20} className="text-primary" />
+            Exportar Caja
+          </button>
+          <button 
+            onClick={exportOrdersCSV}
+            className="bg-slate-900 text-white px-6 py-3 rounded-2xl font-bold shadow-lg shadow-slate-900/10 hover:bg-slate-800 transition-all flex items-center gap-2"
+          >
+            <Download size={20} />
+            Exportar Pedidos
           </button>
         </div>
       </div>
@@ -321,6 +443,49 @@ export default function AdminFinances() {
               {data.categoryStats.length === 0 && (
                 <p className="text-center text-slate-400 text-sm py-10">No hay datos esta semana</p>
               )}
+            </div>
+          </div>
+        </div>
+
+        {/* Delivery Type Distribution */}
+        <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm">
+          <h2 className="text-xl font-black text-slate-900 mb-8">Canales de Venta</h2>
+          <div className="grid sm:grid-cols-2 gap-8 items-center">
+            <div className="h-[250px]">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={data.deliveryTypeStats}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={80}
+                    paddingAngle={5}
+                    dataKey="value"
+                  >
+                    {data.deliveryTypeStats.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={['#3b82f6', '#f59e0b', '#10b981'][index % 3]} />
+                    ))}
+                  </Pie>
+                  <Tooltip 
+                    contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
+                  />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="space-y-4">
+              {data.deliveryTypeStats.map((stat, i) => (
+                <div key={i} className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-3 h-3 rounded-full" style={{ backgroundColor: ['#3b82f6', '#f59e0b', '#10b981'][i % 3] }}></div>
+                    <span className="text-sm font-bold text-slate-700">{stat.name}</span>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm font-black text-slate-900">{formatCurrency(stat.value)}</p>
+                    <p className="text-[10px] font-bold text-slate-400">{stat.count} pedidos</p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         </div>

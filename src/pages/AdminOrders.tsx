@@ -9,18 +9,22 @@ import { toast } from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 
 import { useAuth } from '../context/AuthContext';
+import { useStore } from '../context/StoreContext';
+import { ChevronDown } from 'lucide-react';
 
 export default function AdminOrders() {
-  const { profile } = useAuth();
+  const { profile, isAdmin, isManager } = useAuth();
+  const { selectedStore, stores, setSelectedStore } = useStore();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('Todos');
+  const [statusFilter, setStatusFilter] = useState('Activos');
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
   const [editItems, setEditItems] = useState<any[]>([]);
   const [editLoading, setEditLoading] = useState(false);
   const [editDeliveryFee, setEditDeliveryFee] = useState(0);
   const [editNotes, setEditNotes] = useState('');
+  const [editPaymentStatus, setEditPaymentStatus] = useState<'Pendiente' | 'Pagado'>('Pendiente');
 
   useEffect(() => {
     fetchOrders();
@@ -36,19 +40,27 @@ export default function AdminOrders() {
     return () => {
       subscription.unsubscribe();
     };
-  }, [profile?.store_id]);
+  }, [profile?.store_id, selectedStore?.id]);
 
   const fetchOrders = async () => {
     try {
       setLoading(true);
+      
+      const effectiveStoreId = isAdmin ? selectedStore?.id : profile?.store_id;
+      
+      // Calculate 7 days ago for weekly cleanup
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      
       // Intentamos la consulta completa con joins
       let query = supabase
         .from('orders')
         .select('*, profiles!user_id(full_name), stores(name)')
+        .gte('created_at', sevenDaysAgo.toISOString())
         .order('created_at', { ascending: false });
 
-      if (profile?.store_id) {
-        query = query.eq('store_id', profile.store_id);
+      if (effectiveStoreId) {
+        query = query.eq('store_id', effectiveStoreId);
       }
 
       const { data, error } = await query;
@@ -117,6 +129,7 @@ export default function AdminOrders() {
     setEditingOrder(order);
     setEditDeliveryFee(order.delivery_fee || 0);
     setEditNotes(order.notes || '');
+    setEditPaymentStatus(order.payment_status || 'Pendiente');
     setEditLoading(true);
     try {
       const { data, error } = await supabase
@@ -158,7 +171,8 @@ export default function AdminOrders() {
         .update({ 
           total: newTotal,
           delivery_fee: editDeliveryFee,
-          notes: editNotes
+          notes: editNotes,
+          payment_status: editPaymentStatus
         })
         .eq('id', editingOrder.id);
       
@@ -203,7 +217,28 @@ export default function AdminOrders() {
     const orderId = o.id || '';
     const matchesSearch = fullName.toLowerCase().includes(search.toLowerCase()) || 
                          orderId.toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === 'Todos' || o.status === statusFilter;
+    
+    // Status Filter Logic
+    let matchesStatus = false;
+    if (statusFilter === 'Todos') {
+      matchesStatus = true;
+    } else if (statusFilter === 'Activos') {
+      // Hide Delivered and Canceled
+      if (o.status === 'Entregado' || o.status === 'Cancelado') return false;
+      
+      // Special rule: Pending orders only from today or yesterday
+      if (o.status === 'Pendiente') {
+        const yesterday = new Date();
+        yesterday.setDate(yesterday.getDate() - 1);
+        yesterday.setHours(0, 0, 0, 0);
+        if (new Date(o.created_at) < yesterday) return false;
+      }
+      
+      matchesStatus = true;
+    } else {
+      matchesStatus = o.status === statusFilter;
+    }
+
     return matchesSearch && matchesStatus;
   });
 
@@ -218,7 +253,37 @@ export default function AdminOrders() {
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h1 className="text-3xl font-black text-slate-900">Gestión de Pedidos</h1>
+        <div>
+          <h1 className="text-3xl font-black text-slate-900">Gestión de Pedidos</h1>
+          {isAdmin && (
+            <div className="relative group/store mt-2">
+              <button className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all shadow-sm">
+                <MapPin size={14} className="text-primary" />
+                {selectedStore?.name || 'Todas las Tiendas'}
+                <ChevronDown size={14} />
+              </button>
+              <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 opacity-0 invisible group-hover/store:opacity-100 group-hover/store:visible transition-all z-50">
+                <button 
+                  onClick={() => setSelectedStore(null)}
+                  className="w-full text-left px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-primary transition-colors"
+                >
+                  Todas las Tiendas (Global)
+                </button>
+                {stores.map(store => (
+                  <button 
+                    key={store.id}
+                    onClick={() => setSelectedStore(store)}
+                    className={`w-full text-left px-4 py-2 text-xs font-bold transition-colors ${
+                      selectedStore?.id === store.id ? 'bg-primary/5 text-primary' : 'text-slate-600 hover:bg-slate-50 hover:text-primary'
+                    }`}
+                  >
+                    {store.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
         <div className="flex gap-3">
           <Link 
             to="/admin/finances"
@@ -228,7 +293,7 @@ export default function AdminOrders() {
             Finanzas
           </Link>
           <div className="flex gap-2 overflow-x-auto pb-2 sm:pb-0">
-            {['Todos', 'Pendiente', 'Preparando', 'En camino', 'Entregado', 'Cancelado'].map(status => (
+            {['Activos', 'Todos', 'Pendiente', 'Preparando', 'En camino', 'Entregado', 'Cancelado'].map(status => (
               <button
                 key={status}
                 onClick={() => setStatusFilter(status)}
@@ -275,6 +340,23 @@ export default function AdminOrders() {
                       <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${statusColors[order.status]}`}>
                         {order.status}
                       </span>
+                      {order.delivery_type && (
+                        <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${
+                          order.delivery_type === 'delivery' ? 'bg-blue-50 text-blue-600' :
+                          order.delivery_type === 'pickup' ? 'bg-amber-50 text-amber-600' :
+                          'bg-emerald-50 text-emerald-600'
+                        }`}>
+                          {order.delivery_type === 'delivery' ? 'Domicilio' :
+                           order.delivery_type === 'pickup' ? 'Retiro' : 'En Tienda'}
+                        </span>
+                      )}
+                      {order.payment_status && (
+                        <span className={`px-2 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${
+                          order.payment_status === 'Pagado' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
+                        }`}>
+                          {order.payment_status}
+                        </span>
+                      )}
                     </div>
                     <p className="text-xs text-slate-500 font-bold">
                       {format(new Date(order.created_at), "d 'de' MMMM, HH:mm", { locale: es })}
@@ -346,24 +428,24 @@ export default function AdminOrders() {
                 </div>
 
                 <div className="space-y-2">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Entrega</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Entrega / Tipo</p>
                   <div className="flex flex-col gap-2">
                     <div className="flex items-start gap-2">
                       <MapPin size={14} className="text-primary mt-0.5 flex-shrink-0" />
                       <p className="text-xs font-medium text-slate-600 line-clamp-2">{order.delivery_address}</p>
                     </div>
-                    {order.delivery_zone && (
-                      <div className="flex gap-2">
+                    <div className="flex flex-wrap gap-2">
+                      {order.delivery_zone && (
                         <p className="text-[10px] font-bold text-primary bg-primary/5 px-2 py-1 rounded-lg w-fit">
                           {order.delivery_zone}
                         </p>
-                        {(order as any).stores?.name && (
-                          <p className="text-[10px] font-bold text-purple-600 bg-purple-50 px-2 py-1 rounded-lg w-fit">
-                            Tienda: {(order as any).stores.name}
-                          </p>
-                        )}
-                      </div>
-                    )}
+                      )}
+                      {order.delivery_type && (
+                        <p className="text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-lg w-fit uppercase">
+                          {order.delivery_type}
+                        </p>
+                      )}
+                    </div>
                     <button 
                       onClick={() => openInMap(order)}
                       className="text-[10px] font-black text-blue-600 hover:underline flex items-center gap-1"
@@ -472,6 +554,18 @@ export default function AdminOrders() {
                     )}
                   </div>
                 </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-black text-slate-400 uppercase tracking-widest">Estado de Pago</label>
+                <select
+                  value={editPaymentStatus}
+                  onChange={(e) => setEditPaymentStatus(e.target.value as any)}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-100 rounded-xl font-bold outline-none focus:ring-2 focus:ring-primary appearance-none mb-4"
+                >
+                  <option value="Pendiente">Pendiente</option>
+                  <option value="Pagado">Pagado</option>
+                </select>
               </div>
 
               <div className="space-y-2">

@@ -123,9 +123,11 @@ export default function Profile() {
             <h2 className="text-xl font-black text-slate-900">{profile?.full_name}</h2>
             <p className="text-sm text-slate-500 mb-2">{user?.email}</p>
             <div className="mb-6 flex flex-col items-center gap-2">
-              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${profile?.role === 'admin' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                Rol: {profile?.role || 'Cargando...'}
-              </span>
+              {(profile?.role === 'admin' || profile?.role === 'manager') && (
+                <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest ${profile?.role === 'admin' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                  Rol: {profile?.role}
+                </span>
+              )}
               <button 
                 onClick={handleRefresh}
                 disabled={refreshing}

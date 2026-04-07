@@ -53,23 +53,14 @@ export default function BottomNav() {
           <span className="text-[10px] font-bold">Carrito</span>
         </NavLink>
 
-        {isAdmin && (
-          <>
-            <NavLink 
-              to="/admin/orders" 
-              className={({ isActive }) => `flex flex-col items-center gap-1 transition-colors ${isActive ? 'text-primary' : 'text-slate-400'}`}
-            >
-              <ShoppingBag size={22} />
-              <span className="text-[10px] font-bold">Pedidos</span>
-            </NavLink>
-            <NavLink 
-              to="/admin" 
-              className={({ isActive }) => `flex flex-col items-center gap-1 transition-colors ${isActive ? 'text-primary' : 'text-slate-400'}`}
-            >
-              <LayoutDashboard size={22} />
-              <span className="text-[10px] font-bold">Admin</span>
-            </NavLink>
-          </>
+        {(isAdmin || isManager) && (
+          <NavLink 
+            to="/admin" 
+            className={({ isActive }) => `flex flex-col items-center gap-1 transition-colors ${isActive ? 'text-primary' : 'text-slate-400'}`}
+          >
+            <LayoutDashboard size={22} />
+            <span className="text-[10px] font-bold">Admin</span>
+          </NavLink>
         )}
 
         <NavLink 

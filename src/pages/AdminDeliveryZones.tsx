@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import { DeliveryZone } from '../types/database';
-import { formatCurrency } from '../lib/utils';
+import { formatCurrency, sanitizeInput } from '../lib/utils';
 import { Plus, Search, Edit2, Trash2, MapPin, X, Eye, EyeOff, Save, Map as MapIcon, Trash } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { MapContainer, TileLayer, Polygon, Marker, useMapEvents, useMap } from 'react-leaflet';
@@ -152,6 +152,8 @@ export default function AdminDeliveryZones() {
     try {
       const zoneData = {
         ...formData,
+        name: sanitizeInput(formData.name),
+        neighborhoods: sanitizeInput(formData.neighborhoods),
         store_id: profile?.store_id || formData.store_id
       };
 

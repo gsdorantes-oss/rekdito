@@ -1,278 +1,110 @@
-/*
-  RECADITO - Supabase Schema
-  Run this SQL in your Supabase SQL Editor to set up the database.
-  
-  TIP: To promote a user to admin, run:
-  UPDATE profiles SET role = 'admin' WHERE phone = 'YOUR_PHONE_NUMBER';
-  OR
-  UPDATE profiles SET role = 'admin' WHERE id = 'USER_UUID';
-*/
+-- Script de creación de tablas para Supabase (Recadito)
 
--- 1. Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
-
--- 1.5 Create Stores table
-CREATE TABLE stores (
+-- 1. Tabla de Tiendas (Stores)
+CREATE TABLE IF NOT EXISTS stores (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT NOT NULL,
-  slug TEXT NOT NULL UNIQUE,
-  address TEXT,
-  lat DECIMAL(10, 8),
-  lng DECIMAL(11, 8),
-  is_active BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  address TEXT NOT NULL,
+  phone TEXT NOT NULL,
+  lat DOUBLE PRECISION,
+  lng DOUBLE PRECISION,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 2. Create Products table
-CREATE TABLE products (
+-- 2. Tabla de Perfiles (Profiles)
+CREATE TABLE IF NOT EXISTS profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  full_name TEXT NOT NULL,
+  phone TEXT,
+  address TEXT,
+  role TEXT DEFAULT 'client' CHECK (role IN ('admin', 'manager', 'client')),
+  store_id UUID REFERENCES stores(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 3. Tabla de Productos (Products)
+CREATE TABLE IF NOT EXISTS products (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   name TEXT NOT NULL,
   category TEXT NOT NULL,
   description TEXT,
-  type TEXT NOT NULL CHECK (type IN ('unidad', 'libra', 'paquete')),
-  price DECIMAL(10, 2) NOT NULL DEFAULT 0,
-  cost_price DECIMAL(10, 2) NOT NULL DEFAULT 0,
+  type TEXT NOT NULL CHECK (type IN ('unidad', 'libra', 'paquete', 'kilo', 'mazo', 'caja')),
+  price DECIMAL(10,2) NOT NULL,
+  cost_price DECIMAL(10,2),
   image_url TEXT,
-  stock DECIMAL(10, 2) NOT NULL DEFAULT 0,
-  is_active BOOLEAN DEFAULT TRUE,
-  store_id UUID REFERENCES stores(id) ON DELETE CASCADE, -- Optional if using product_store
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  stock INTEGER DEFAULT 0,
+  is_active BOOLEAN DEFAULT true,
+  store_id UUID REFERENCES stores(id) ON DELETE SET NULL, -- NULL significa que el producto es global (todas las tiendas)
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 2.5 Create Product-Store Junction table (for multi-store products)
-CREATE TABLE product_store (
-  product_id UUID REFERENCES products(id) ON DELETE CASCADE,
-  store_id UUID REFERENCES stores(id) ON DELETE CASCADE,
-  price DECIMAL(10, 2) NOT NULL,
-  cost_price DECIMAL(10, 2) NOT NULL,
-  stock DECIMAL(10, 2) NOT NULL DEFAULT 0,
-  is_active BOOLEAN DEFAULT TRUE,
-  PRIMARY KEY (product_id, store_id)
-);
-
--- 3. Create Profiles (Extended User Data)
-CREATE TABLE profiles (
-  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-  full_name TEXT NOT NULL,
-  email TEXT NOT NULL UNIQUE,
-  phone TEXT NOT NULL UNIQUE,
-  address TEXT,
-  role TEXT DEFAULT 'client' CHECK (role IN ('admin', 'manager', 'client')),
-  store_id UUID REFERENCES stores(id), -- For admins/managers, which store they manage
-  lat DECIMAL(10, 8),
-  lng DECIMAL(11, 8),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 4. Create Orders table
-CREATE TABLE orders (
+-- 4. Tabla de Zonas de Entrega (Delivery Zones)
+CREATE TABLE IF NOT EXISTS delivery_zones (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  user_id UUID REFERENCES auth.users(id),
+  name TEXT NOT NULL,
+  price DECIMAL(10,2) NOT NULL,
+  neighborhoods TEXT,
+  is_active BOOLEAN DEFAULT true,
   store_id UUID REFERENCES stores(id) ON DELETE CASCADE,
-  status TEXT DEFAULT 'Pendiente' CHECK (status IN ('Pendiente', 'Preparando', 'En camino', 'Entregado', 'Cancelado')),
-  total DECIMAL(10, 2) NOT NULL,
-  delivery_fee DECIMAL(10, 2) NOT NULL DEFAULT 0,
-  delivery_zone TEXT,
-  notes TEXT,
-  payment_method TEXT NOT NULL CHECK (payment_method IN ('Efectivo', 'Transferencia', 'Yappy')),
-  delivery_address TEXT NOT NULL,
-  delivery_lat DECIMAL(10, 8),
-  delivery_lng DECIMAL(11, 8),
-  phone_contact TEXT NOT NULL,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  lat DOUBLE PRECISION,
+  lng DOUBLE PRECISION,
+  radius_km DOUBLE PRECISION,
+  coordinates JSONB, -- Para polígonos si es necesario
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 5. Create Order Items table
-CREATE TABLE order_items (
+-- 5. Tabla de Pedidos (Orders)
+CREATE TABLE IF NOT EXISTS orders (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES profiles(id) ON DELETE SET NULL,
+  status TEXT DEFAULT 'Pendiente' CHECK (status IN ('Pendiente', 'Preparando', 'En camino', 'Entregado', 'Cancelado')),
+  delivery_type TEXT NOT NULL CHECK (delivery_type IN ('delivery', 'pickup', 'in_store')),
+  payment_status TEXT DEFAULT 'Pendiente' CHECK (payment_status IN ('Pendiente', 'Pagado')),
+  total DECIMAL(10,2) NOT NULL,
+  delivery_fee DECIMAL(10,2) DEFAULT 0,
+  delivery_zone TEXT,
+  store_id UUID REFERENCES stores(id) ON DELETE SET NULL,
+  notes TEXT,
+  payment_method TEXT CHECK (payment_method IN ('Efectivo', 'Transferencia', 'Yappy')),
+  delivery_address TEXT,
+  delivery_lat DOUBLE PRECISION,
+  delivery_lng DOUBLE PRECISION,
+  phone_contact TEXT,
+  created_at TIMESTAMPTZ DEFAULT now()
+);
+
+-- 6. Tabla de Items de Pedido (Order Items)
+CREATE TABLE IF NOT EXISTS order_items (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   order_id UUID REFERENCES orders(id) ON DELETE CASCADE,
-  product_id UUID REFERENCES products(id),
-  quantity DECIMAL(10, 2) NOT NULL,
-  unit_price DECIMAL(10, 2) NOT NULL,
-  subtotal DECIMAL(10, 2) NOT NULL
+  product_id UUID REFERENCES products(id) ON DELETE SET NULL,
+  quantity DECIMAL(10,2) NOT NULL,
+  unit_price DECIMAL(10,2) NOT NULL,
+  subtotal DECIMAL(10,2) NOT NULL,
+  created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- 6. Create Delivery Zones table
-CREATE TABLE delivery_zones (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  store_id UUID REFERENCES stores(id) ON DELETE CASCADE,
-  name TEXT NOT NULL,
-  price DECIMAL(10, 2) NOT NULL DEFAULT 0,
-  neighborhoods TEXT NOT NULL, -- Comma separated list of neighborhoods
-  lat DECIMAL(10, 8),
-  lng DECIMAL(11, 8),
-  radius_km DECIMAL(10, 2),
-  coordinates JSONB, -- Array of [lat, lng] for polygons
-  is_active BOOLEAN DEFAULT TRUE,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 7. Create Audit Logs
-CREATE TABLE audit_logs (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  action TEXT NOT NULL,
-  table_name TEXT NOT NULL,
-  record_id UUID,
-  user_id UUID REFERENCES auth.users(id),
-  details JSONB,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- 7. Triggers for Stock Management
-CREATE OR REPLACE FUNCTION update_stock_on_order()
-RETURNS TRIGGER AS $$
-BEGIN
-  UPDATE products
-  SET stock = stock - NEW.quantity
-  WHERE id = NEW.product_id;
-  
-  -- Prevent negative stock if needed (optional, prompt says "evitar stock negativo")
-  IF (SELECT stock FROM products WHERE id = NEW.product_id) < 0 THEN
-    RAISE EXCEPTION 'Insufficient stock for product %', NEW.product_id;
-  END IF;
-  
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER trigger_update_stock
-AFTER INSERT ON order_items
-FOR EACH ROW
-EXECUTE FUNCTION update_stock_on_order();
-
--- 8. Row Level Security (RLS)
+-- Habilitar RLS (Row Level Security)
 ALTER TABLE stores ENABLE ROW LEVEL SECURITY;
-ALTER TABLE products ENABLE ROW LEVEL SECURITY;
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE delivery_zones ENABLE ROW LEVEL SECURITY;
 ALTER TABLE orders ENABLE ROW LEVEL SECURITY;
 ALTER TABLE order_items ENABLE ROW LEVEL SECURITY;
-ALTER TABLE delivery_zones ENABLE ROW LEVEL SECURITY;
-ALTER TABLE product_store ENABLE ROW LEVEL SECURITY;
 
--- Stores: Everyone can read active stores, staff can manage their own
-CREATE POLICY "Public read active stores" ON stores FOR SELECT USING (is_active = TRUE);
-CREATE POLICY "Staff manage own store" ON stores FOR ALL USING (
-  EXISTS (
-    SELECT 1 FROM profiles 
-    WHERE id = auth.uid() 
-    AND role IN ('admin', 'manager') 
-    AND (store_id IS NULL OR store_id = stores.id)
-  )
+-- Políticas básicas (Lectura pública para productos y tiendas)
+CREATE POLICY "Lectura pública de tiendas" ON stores FOR SELECT USING (true);
+CREATE POLICY "Lectura pública de productos" ON products FOR SELECT USING (true);
+CREATE POLICY "Lectura pública de zonas" ON delivery_zones FOR SELECT USING (true);
+
+-- Políticas para perfiles (Solo el dueño puede leer/editar su perfil)
+CREATE POLICY "Usuarios pueden ver su propio perfil" ON profiles FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Usuarios pueden editar su propio perfil" ON profiles FOR UPDATE USING (auth.uid() = id);
+
+-- Políticas para pedidos (Solo el dueño puede ver sus pedidos)
+CREATE POLICY "Usuarios pueden ver sus propios pedidos" ON orders FOR SELECT USING (auth.uid() = user_id);
+CREATE POLICY "Usuarios pueden crear sus propios pedidos" ON orders FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "Usuarios pueden ver sus propios items de pedido" ON order_items FOR SELECT USING (
+  EXISTS (SELECT 1 FROM orders WHERE orders.id = order_items.order_id AND orders.user_id = auth.uid())
 );
-
--- Product Store: Everyone can read active store-product mappings
-CREATE POLICY "Public read active product_store" ON product_store FOR SELECT USING (is_active = TRUE);
-CREATE POLICY "Staff manage product_store" ON product_store FOR ALL USING (
-  EXISTS (
-    SELECT 1 FROM profiles 
-    WHERE id = auth.uid() 
-    AND role IN ('admin', 'manager') 
-    AND (store_id IS NULL OR store_id = product_store.store_id)
-  )
-);
-
--- Products: Everyone can read active products, only staff can manage their store's products
-CREATE POLICY "Public read active products" ON products FOR SELECT USING (is_active = TRUE);
-CREATE POLICY "Staff manage products" ON products FOR ALL USING (
-  EXISTS (
-    SELECT 1 FROM profiles 
-    WHERE id = auth.uid() 
-    AND role IN ('admin', 'manager') 
-    AND (store_id IS NULL OR store_id = products.store_id)
-  )
-);
-
--- Profiles: Users can read their own profile, staff can read all in their store
-CREATE POLICY "Users view own profile" ON profiles FOR SELECT USING (auth.uid() = id);
-CREATE POLICY "Users update own profile" ON profiles FOR UPDATE USING (auth.uid() = id);
-CREATE POLICY "Staff view store profiles" ON profiles FOR SELECT USING (
-  EXISTS (
-    SELECT 1 FROM profiles AS p
-    WHERE p.id = auth.uid() 
-    AND p.role IN ('admin', 'manager') 
-    AND (p.store_id IS NULL OR p.store_id = profiles.store_id)
-  )
-);
-
--- Orders: Users view own orders, staff view all in their store
-CREATE POLICY "Users view own orders" ON orders FOR SELECT USING (auth.uid() = user_id);
-CREATE POLICY "Users create orders" ON orders FOR INSERT WITH CHECK (auth.uid() = user_id);
-CREATE POLICY "Staff manage store orders" ON orders FOR ALL USING (
-  EXISTS (
-    SELECT 1 FROM profiles 
-    WHERE id = auth.uid() 
-    AND role IN ('admin', 'manager') 
-    AND (store_id IS NULL OR store_id = orders.store_id)
-  )
-);
-
--- Order Items: Users view own order items, staff view all in their store
-CREATE POLICY "Users view own order items" ON order_items FOR SELECT USING (
-  EXISTS (SELECT 1 FROM orders WHERE id = order_items.order_id AND user_id = auth.uid())
-);
-CREATE POLICY "Users create order items" ON order_items FOR INSERT WITH CHECK (
-  EXISTS (SELECT 1 FROM orders WHERE id = order_items.order_id AND user_id = auth.uid())
-);
-CREATE POLICY "Staff manage store order items" ON order_items FOR ALL USING (
-  EXISTS (
-    SELECT 1 FROM orders 
-    JOIN profiles ON (profiles.store_id IS NULL OR profiles.store_id = orders.store_id)
-    WHERE orders.id = order_items.order_id 
-    AND profiles.id = auth.uid() 
-    AND profiles.role IN ('admin', 'manager')
-  )
-);
-
--- Delivery Zones: Everyone can read active zones, only staff can manage their store's zones
-CREATE POLICY "Public read active zones" ON delivery_zones FOR SELECT USING (is_active = TRUE);
-CREATE POLICY "Staff manage store zones" ON delivery_zones FOR ALL USING (
-  EXISTS (
-    SELECT 1 FROM profiles 
-    WHERE id = auth.uid() 
-    AND role IN ('admin', 'manager') 
-    AND (store_id IS NULL OR store_id = delivery_zones.store_id)
-  )
-);
-
--- 9. Automatic Store Assignment Logic
-CREATE OR REPLACE FUNCTION get_email_by_phone(phone_input TEXT)
-RETURNS TEXT AS $$
-DECLARE
-    email_output TEXT;
-BEGIN
-    SELECT email INTO email_output FROM profiles WHERE phone = phone_input;
-    RETURN email_output;
-END;
-$$ LANGUAGE plpgsql SECURITY DEFINER;
-
-CREATE OR REPLACE FUNCTION find_nearest_store(user_lat DECIMAL, user_lng DECIMAL)
-RETURNS UUID AS $$
-DECLARE
-    nearest_store_id UUID;
-BEGIN
-    SELECT id INTO nearest_store_id
-    FROM stores
-    WHERE is_active = TRUE
-    ORDER BY (
-        (lat - user_lat)^2 + (lng - user_lng)^2
-    ) ASC
-    LIMIT 1;
-    
-    RETURN nearest_store_id;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION trigger_assign_nearest_store()
-RETURNS TRIGGER AS $$
-BEGIN
-    IF NEW.lat IS NOT NULL AND NEW.lng IS NOT NULL AND NEW.role = 'client' THEN
-        NEW.store_id := find_nearest_store(NEW.lat, NEW.lng);
-    END IF;
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER assign_store_on_location_change
-BEFORE INSERT OR UPDATE OF lat, lng ON profiles
-FOR EACH ROW
-EXECUTE FUNCTION trigger_assign_nearest_store();

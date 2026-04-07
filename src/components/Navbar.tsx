@@ -8,10 +8,11 @@ import { useStore } from '../context/StoreContext';
 import { cn } from '../lib/utils';
 
 export default function Navbar() {
-  const { user, profile, isAdmin, signOut } = useAuth();
+  const { user, profile, isAdmin, isManager, signOut } = useAuth();
   const { itemCount } = useCart();
   const { selectedStore } = useStore();
   const location = useLocation();
+  const canAccessAdmin = isAdmin || isManager;
 
   return (
     <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-bottom border-slate-100">
@@ -53,49 +54,17 @@ export default function Navbar() {
             >
               Tienda
             </Link>
-            {isAdmin && (
-              <>
-                <Link 
-                  to="/admin" 
-                  className={cn(
-                    "text-sm font-medium transition-colors hover:text-primary flex items-center gap-1",
-                    location.pathname === '/admin' ? "text-primary" : "text-slate-600"
-                  )}
-                >
-                  <LayoutDashboard size={16} />
-                  Dashboard
-                </Link>
-                <Link 
-                  to="/admin/orders" 
-                  className={cn(
-                    "text-sm font-medium transition-colors hover:text-primary flex items-center gap-1",
-                    location.pathname === '/admin/orders' ? "text-primary" : "text-slate-600"
-                  )}
-                >
-                  <ShoppingBag size={16} />
-                  Pedidos
-                </Link>
-                <Link 
-                  to="/admin/finances" 
-                  className={cn(
-                    "text-sm font-medium transition-colors hover:text-primary flex items-center gap-1",
-                    location.pathname === '/admin/finances' ? "text-primary" : "text-slate-600"
-                  )}
-                >
-                  <TrendingUp size={16} />
-                  Finanzas
-                </Link>
-                <Link 
-                  to="/admin/products" 
-                  className={cn(
-                    "text-sm font-medium transition-colors hover:text-primary flex items-center gap-1",
-                    location.pathname === '/admin/products' ? "text-primary" : "text-slate-600"
-                  )}
-                >
-                  <Store size={16} />
-                  Productos
-                </Link>
-              </>
+            {canAccessAdmin && (
+              <Link 
+                to="/admin" 
+                className={cn(
+                  "bg-slate-900 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider flex items-center gap-2 hover:bg-primary transition-all shadow-lg shadow-slate-900/10",
+                  location.pathname.startsWith('/admin') ? "bg-primary" : ""
+                )}
+              >
+                <LayoutDashboard size={16} />
+                Panel Admin
+              </Link>
             )}
           </div>
 

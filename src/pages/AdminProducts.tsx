@@ -1,15 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Product, ProductType } from '../types/database';
-import { formatCurrency } from '../lib/utils';
-import { Plus, Search, Edit2, Trash2, Package, Image as ImageIcon, X, ShoppingBag, Eye, EyeOff, TrendingUp, MapPin } from 'lucide-react';
+import { formatCurrency, sanitizeInput } from '../lib/utils';
 import { toast } from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 
 import { useAuth } from '../context/AuthContext';
+import { useStore } from '../context/StoreContext';
+import { Plus, Search, Edit2, Trash2, Package, Image as ImageIcon, X, ShoppingBag, Eye, EyeOff, TrendingUp, MapPin, ChevronDown, Copy } from 'lucide-react';
 
 export default function AdminProducts() {
   const { profile, isAdmin } = useAuth();
+  const { selectedStore, stores: allStores, setSelectedStore } = useStore();
   const [products, setProducts] = useState<Product[]>([]);
   const [stores, setStores] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +37,7 @@ export default function AdminProducts() {
     if (isAdmin) {
       fetchStores();
     }
-  }, [profile?.store_id, isAdmin]);
+  }, [profile?.store_id, isAdmin, selectedStore?.id]);
 
   const fetchStores = async () => {
     try {
@@ -53,13 +55,17 @@ export default function AdminProducts() {
 
   const fetchProducts = async () => {
     try {
+      setLoading(true);
+      const effectiveStoreId = isAdmin ? selectedStore?.id : profile?.store_id;
+
       let query = supabase
         .from('products')
         .select('*')
         .order('name');
 
-      if (profile?.store_id) {
-        query = query.eq('store_id', profile.store_id);
+      if (effectiveStoreId) {
+        // Include products for this store OR global products
+        query = query.or(`store_id.eq.${effectiveStoreId},store_id.is.null`);
       }
       
       const { data, error } = await query;
@@ -87,7 +93,7 @@ export default function AdminProducts() {
         image_url: product.image_url || '',
         stock: product.stock,
         is_active: product.is_active,
-        store_id: product.store_id || profile?.store_id || ''
+        store_id: product.store_id || ''
       });
     } else {
       setEditingProduct(null);
@@ -114,12 +120,16 @@ export default function AdminProducts() {
     try {
       const productData = {
         ...formData,
-        store_id: profile?.store_id || formData.store_id
+        name: sanitizeInput(formData.name),
+        category: sanitizeInput(formData.category),
+        description: sanitizeInput(formData.description),
+        image_url: sanitizeInput(formData.image_url),
+        store_id: formData.store_id || null // Use null for Global
       };
 
       if (editingProduct) {
-        // Security check: Ensure manager is editing their own store's product
-        if (profile?.store_id && editingProduct.store_id !== profile.store_id) {
+        // Security check: Ensure manager is editing their own store's product or a global one if they are admin
+        if (!isAdmin && profile?.store_id && editingProduct.store_id && editingProduct.store_id !== profile.store_id) {
           throw new Error('No tienes permiso para editar este producto');
         }
 
@@ -140,6 +150,32 @@ export default function AdminProducts() {
       fetchProducts();
     } catch (error: any) {
       toast.error(error.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDuplicate = async (product: Product) => {
+    if (!confirm(`¿Deseas duplicar el producto "${product.name}"?`)) return;
+    
+    setLoading(true);
+    try {
+      const { id, created_at, ...productToDuplicate } = product;
+      const duplicatedData = {
+        ...productToDuplicate,
+        name: `${product.name} (Copia)`,
+        is_active: false // Keep it hidden by default
+      };
+
+      const { error } = await supabase
+        .from('products')
+        .insert(duplicatedData);
+
+      if (error) throw error;
+      toast.success('Producto duplicado con éxito');
+      fetchProducts();
+    } catch (error: any) {
+      toast.error(error.message || 'Error al duplicar producto');
     } finally {
       setLoading(false);
     }
@@ -181,7 +217,37 @@ export default function AdminProducts() {
   return (
     <div className="space-y-8">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h1 className="text-3xl font-black text-slate-900">Productos</h1>
+        <div>
+          <h1 className="text-3xl font-black text-slate-900">Productos</h1>
+          {isAdmin && (
+            <div className="relative group/store mt-2">
+              <button className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all shadow-sm">
+                <MapPin size={14} className="text-primary" />
+                {selectedStore?.name || 'Todas las Tiendas'}
+                <ChevronDown size={14} />
+              </button>
+              <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 opacity-0 invisible group-hover/store:opacity-100 group-hover/store:visible transition-all z-50">
+                <button 
+                  onClick={() => setSelectedStore(null)}
+                  className="w-full text-left px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-primary transition-colors"
+                >
+                  Todas las Tiendas (Global)
+                </button>
+                {allStores.map(store => (
+                  <button 
+                    key={store.id}
+                    onClick={() => setSelectedStore(store)}
+                    className={`w-full text-left px-4 py-2 text-xs font-bold transition-colors ${
+                      selectedStore?.id === store.id ? 'bg-primary/5 text-primary' : 'text-slate-600 hover:bg-slate-50 hover:text-primary'
+                    }`}
+                  >
+                    {store.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
         <div className="flex gap-3">
           <Link 
             to="/admin/delivery-zones"
@@ -294,8 +360,16 @@ export default function AdminProducts() {
                   <td className="px-6 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
                       <button 
+                        onClick={() => handleDuplicate(product)}
+                        className="p-2 text-slate-400 hover:text-emerald-500 transition-colors"
+                        title="Duplicar"
+                      >
+                        <Copy size={18} />
+                      </button>
+                      <button 
                         onClick={() => handleOpenModal(product)}
                         className="p-2 text-slate-400 hover:text-primary transition-colors"
+                        title="Editar"
                       >
                         <Edit2 size={18} />
                       </button>
@@ -348,6 +422,12 @@ export default function AdminProducts() {
                   >
                     <option value="Frutas">Frutas</option>
                     <option value="Verduras">Verduras</option>
+                    <option value="Hortalizas">Hortalizas</option>
+                    <option value="Tubérculos">Tubérculos</option>
+                    <option value="Granos">Granos</option>
+                    <option value="Lácteos">Lácteos</option>
+                    <option value="Carnes">Carnes</option>
+                    <option value="Abarrotes">Abarrotes</option>
                     <option value="Paquetes">Paquetes</option>
                     <option value="Otros">Otros</option>
                   </select>
@@ -446,16 +526,15 @@ export default function AdminProducts() {
                 <label htmlFor="is_active" className="text-sm font-bold text-slate-700">Producto Activo</label>
               </div>
 
-              {!profile?.store_id && (
+              {isAdmin && (
                 <div className="space-y-2">
                   <label className="text-sm font-bold text-slate-700">Tienda Asociada</label>
                   <select
-                    required
                     value={formData.store_id}
                     onChange={(e) => setFormData({ ...formData, store_id: e.target.value })}
                     className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-primary outline-none"
                   >
-                    <option value="">Selecciona una tienda...</option>
+                    <option value="">Todas las Tiendas (Global)</option>
                     {stores.map(store => (
                       <option key={store.id} value={store.id}>{store.name}</option>
                     ))}

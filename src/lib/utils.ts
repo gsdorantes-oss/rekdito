@@ -12,6 +12,12 @@ export const formatCurrency = (amount: number) => {
   }).format(amount);
 };
 
+export const sanitizeInput = (text: string): string => {
+  if (!text) return '';
+  // Basic XSS prevention: strip HTML tags
+  return text.replace(/<[^>]*>?/gm, '').trim();
+};
+
 export const generateWhatsAppLink = (orderId: string, phone: string, total: number, items: any[], address: string, status?: string, deliveryFee: number = 0, notes?: string) => {
   const statusText = status ? `*Estado:* ${status}\n` : '';
   const notesText = notes ? `\n*Notas:* ${notes}\n` : '';
@@ -28,7 +34,9 @@ export const generateWhatsAppLink = (orderId: string, phone: string, total: numb
     deliveryText +
     `*MONTO TOTAL A PAGAR: ${formatCurrency(total)}*\n` +
     `--------------------------\n\n` +
-    `¡Gracias por tu compra!`;
+    `¡Gracias por tu compra!\n\n` +
+    `*¡Descarga nuestra App y pide más fácil!*\n` +
+    `👉 https://ais-pre-tb7cqbg4cbmgkx6g7ep44x-150633789060.us-west2.run.app`;
   
   const encodedMessage = encodeURIComponent(message);
   // Remove non-numeric characters from phone

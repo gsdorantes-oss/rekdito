@@ -4,7 +4,7 @@ import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 import { supabase } from '../lib/supabase';
 import { formatCurrency, generateWhatsAppLink } from '../lib/utils';
-import { MapPin, Phone, CreditCard, Wallet, Banknote, ArrowRight, CheckCircle2, Clock, MessageCircle, ShoppingBag, Navigation } from 'lucide-react';
+import { MapPin, Phone, CreditCard, Wallet, Banknote, ArrowRight, CheckCircle2, Clock, MessageCircle, ShoppingBag, Navigation, Store } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import { toast } from 'react-hot-toast';
 import L from 'leaflet';
@@ -71,7 +71,8 @@ export default function Checkout() {
     address: profile?.address || '',
     paymentMethod: 'Efectivo' as any,
     notes: '',
-    deliveryZone: ''
+    deliveryZone: '',
+    deliveryType: 'delivery' as 'delivery' | 'pickup'
   });
   const [position, setPosition] = useState<L.LatLng | null>(null);
   const [loading, setLoading] = useState(false);
@@ -215,7 +216,8 @@ export default function Checkout() {
   };
 
   const currentZone = deliveryZones.find(z => z.id === formData.deliveryZone);
-  const deliveryFee = total >= 15 ? 0 : (currentZone?.price || 0);
+  const isPickup = formData.deliveryType === 'pickup';
+  const deliveryFee = isPickup ? 0 : (total >= 15 ? 0 : (currentZone?.price || 0));
   const finalTotal = total + deliveryFee;
 
   useEffect(() => {
@@ -226,13 +228,15 @@ export default function Checkout() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.deliveryZone) {
-      toast.error('Por favor selecciona una zona de entrega');
-      return;
-    }
-    if (!position) {
-      toast.error('Por favor selecciona tu ubicación en el mapa');
-      return;
+    if (formData.deliveryType === 'delivery') {
+      if (!formData.deliveryZone) {
+        toast.error('Por favor selecciona una zona de entrega');
+        return;
+      }
+      if (!position) {
+        toast.error('Por favor selecciona tu ubicación en el mapa');
+        return;
+      }
     }
     setLoading(true);
 
@@ -244,13 +248,15 @@ export default function Checkout() {
           user_id: user?.id,
           total: finalTotal,
           delivery_fee: deliveryFee,
-          delivery_zone: currentZone?.name,
+          delivery_type: formData.deliveryType,
+          payment_status: 'Pendiente',
+          delivery_zone: isPickup ? 'Retiro en Tienda' : currentZone?.name,
           store_id: currentZone?.store_id,
           notes: formData.notes,
           payment_method: formData.paymentMethod,
-          delivery_address: formData.address,
-          delivery_lat: position.lat,
-          delivery_lng: position.lng,
+          delivery_address: isPickup ? 'Retiro en Tienda' : formData.address,
+          delivery_lat: isPickup ? 0 : position?.lat || 0,
+          delivery_lng: isPickup ? 0 : position?.lng || 0,
           phone_contact: formData.phone,
           status: 'Pendiente'
         })
@@ -344,6 +350,40 @@ export default function Checkout() {
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
             <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+              <ShoppingBag size={20} className="text-primary" />
+              Tipo de Entrega
+            </h2>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, deliveryType: 'delivery' })}
+                className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all gap-2 ${
+                  formData.deliveryType === 'delivery' 
+                    ? 'border-primary bg-primary/5 text-primary' 
+                    : 'border-slate-100 bg-white text-slate-500 hover:border-slate-200'
+                }`}
+              >
+                <Navigation size={24} />
+                <span className="text-sm font-bold">A Domicilio</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setFormData({ ...formData, deliveryType: 'pickup' })}
+                className={`flex flex-col items-center justify-center p-4 rounded-2xl border-2 transition-all gap-2 ${
+                  formData.deliveryType === 'pickup' 
+                    ? 'border-primary bg-primary/5 text-primary' 
+                    : 'border-slate-100 bg-white text-slate-500 hover:border-slate-200'
+                }`}
+              >
+                <Store size={24} />
+                <span className="text-sm font-bold">Retiro en Tienda</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-6">
+            <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
               <Phone size={20} className="text-primary" />
               Contacto y Entrega
             </h2>
@@ -361,41 +401,45 @@ export default function Checkout() {
                 />
               </div>
               
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700 ml-1">Zona de Entrega</label>
-                <select
-                  required
-                  value={formData.deliveryZone}
-                  onChange={(e) => setFormData({ ...formData, deliveryZone: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-primary outline-none appearance-none"
-                >
-                  <option value="">Selecciona tu zona...</option>
-                  {deliveryZones.map(zone => (
-                    <option key={zone.id} value={zone.id}>
-                      {zone.name} ({total >= 15 ? 'GRATIS' : formatCurrency(zone.price)})
-                    </option>
-                  ))}
-                </select>
-                {nearestStore && (
-                  <div className="mt-2 p-3 bg-purple-50 rounded-xl border border-purple-100 flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
-                    <ShoppingBag size={16} className="text-purple-600" />
-                    <p className="text-xs font-bold text-purple-700">
-                      Tienda más cercana: <span className="font-black">{nearestStore.name}</span> ({nearestStore.distance.toFixed(2)} km)
-                    </p>
-                  </div>
-                )}
-              </div>
+              {formData.deliveryType === 'delivery' && (
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-700 ml-1">Zona de Entrega</label>
+                  <select
+                    required
+                    value={formData.deliveryZone}
+                    onChange={(e) => setFormData({ ...formData, deliveryZone: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-primary outline-none appearance-none"
+                  >
+                    <option value="">Selecciona tu zona...</option>
+                    {deliveryZones.map(zone => (
+                      <option key={zone.id} value={zone.id}>
+                        {zone.name} ({total >= 15 ? 'GRATIS' : formatCurrency(zone.price)})
+                      </option>
+                    ))}
+                  </select>
+                  {nearestStore && (
+                    <div className="mt-2 p-3 bg-purple-50 rounded-xl border border-purple-100 flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+                      <ShoppingBag size={16} className="text-purple-600" />
+                      <p className="text-xs font-bold text-purple-700">
+                        Tienda más cercana: <span className="font-black">{nearestStore.name}</span> ({nearestStore.distance.toFixed(2)} km)
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-slate-700 ml-1">Dirección y Referencias</label>
-                <textarea
-                  required
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-primary outline-none min-h-[80px]"
-                  placeholder="Ej: Casa verde frente al parque..."
-                />
-              </div>
+              {formData.deliveryType === 'delivery' && (
+                <div className="space-y-2">
+                  <label className="text-sm font-bold text-slate-700 ml-1">Dirección y Referencias</label>
+                  <textarea
+                    required
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    className="w-full px-4 py-3 bg-slate-50 border-none rounded-xl focus:ring-2 focus:ring-primary outline-none min-h-[80px]"
+                    placeholder="Ej: Casa verde frente al parque..."
+                  />
+                </div>
+              )}
 
               <div className="space-y-2">
                 <label className="text-sm font-bold text-slate-700 ml-1">Comentarios o Notas (Opcional)</label>
@@ -438,43 +482,45 @@ export default function Checkout() {
             </div>
           </div>
 
-          <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
-            <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
-              <MapPin size={20} className="text-primary" />
-              Tu Ubicación Exacta
-              {geocoding && <span className="text-xs font-normal text-slate-400 animate-pulse">(Detectando zona...)</span>}
-            </h2>
-            <p className="text-sm text-slate-500">Haz clic en el mapa para marcar el punto de entrega o usa el botón de abajo.</p>
-            
-            <button
-              type="button"
-              onClick={handleGetLocation}
-              disabled={gettingLocation}
-              className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 transition-all font-bold ${
-                position 
-                  ? 'border-emerald-500 text-emerald-600 bg-emerald-50' 
-                  : 'border-slate-200 text-slate-600 hover:border-primary hover:text-primary'
-              }`}
-            >
-              <Navigation size={18} className={gettingLocation ? 'animate-spin' : ''} />
-              {gettingLocation ? 'Obteniendo...' : position ? 'Ubicación Detectada ✓' : 'Usar mi ubicación actual'}
-            </button>
+          {formData.deliveryType === 'delivery' && (
+            <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <MapPin size={20} className="text-primary" />
+                Tu Ubicación Exacta
+                {geocoding && <span className="text-xs font-normal text-slate-400 animate-pulse">(Detectando zona...)</span>}
+              </h2>
+              <p className="text-sm text-slate-500">Haz clic en el mapa para marcar el punto de entrega o usa el botón de abajo.</p>
+              
+              <button
+                type="button"
+                onClick={handleGetLocation}
+                disabled={gettingLocation}
+                className={`w-full flex items-center justify-center gap-2 py-3 rounded-xl border-2 transition-all font-bold ${
+                  position 
+                    ? 'border-emerald-500 text-emerald-600 bg-emerald-50' 
+                    : 'border-slate-200 text-slate-600 hover:border-primary hover:text-primary'
+                }`}
+              >
+                <Navigation size={18} className={gettingLocation ? 'animate-spin' : ''} />
+                {gettingLocation ? 'Obteniendo...' : position ? 'Ubicación Detectada ✓' : 'Usar mi ubicación actual'}
+              </button>
 
-            <div className="h-[300px] rounded-2xl overflow-hidden border border-slate-100 relative">
-              {geocoding && (
-                <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px] z-[1000] flex items-center justify-center">
-                  <div className="bg-white px-4 py-2 rounded-full shadow-lg text-xs font-bold text-primary animate-bounce">
-                    Detectando zona...
+              <div className="h-[300px] rounded-2xl overflow-hidden border border-slate-100 relative">
+                {geocoding && (
+                  <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px] z-[1000] flex items-center justify-center">
+                    <div className="bg-white px-4 py-2 rounded-full shadow-lg text-xs font-bold text-primary animate-bounce">
+                      Detectando zona...
+                    </div>
                   </div>
-                </div>
-              )}
-              <MapContainer center={[8.9824, -79.5199]} zoom={13} scrollWheelZoom={false}>
-                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-                <LocationMarker position={position} setPosition={setPosition} onLocationSelect={handleLocationSelect} />
-                <MapController position={position} />
-              </MapContainer>
+                )}
+                <MapContainer center={[8.9824, -79.5199]} zoom={13} scrollWheelZoom={false}>
+                  <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                  <LocationMarker position={position} setPosition={setPosition} onLocationSelect={handleLocationSelect} />
+                  <MapController position={position} />
+                </MapContainer>
+              </div>
             </div>
-          </div>
+          )}
 
           <button
             type="submit"

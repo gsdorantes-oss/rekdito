@@ -4,24 +4,26 @@ import { supabase } from '../lib/supabase';
 import { Product } from '../types/database';
 import { useCart } from '../context/CartContext';
 import { formatCurrency } from '../lib/utils';
-import { Search, Filter, Plus, Minus, ShoppingBag, LayoutDashboard } from 'lucide-react';
+import { Search, Filter, Plus, Minus, ShoppingBag, LayoutDashboard, Sparkles, Utensils, Info, X, ChefHat, Activity } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../context/AuthContext';
 import { useStore } from '../context/StoreContext';
 import StoreSelector from '../components/StoreSelector';
 import { MapPin } from 'lucide-react';
+import { getNutritionalInfo, getRecipes, NutritionalInfo, Recipe } from '../services/geminiService';
 
 export default function Home() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('Todos');
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const { addToCart } = useCart();
   const { isAdmin } = useAuth();
   const { selectedStore, setSelectedStore } = useStore();
 
-  const categories = ['Todos', 'Frutas', 'Verduras', 'Paquetes', 'Otros'];
+  const categories = ['Todos', 'Frutas', 'Verduras', 'Hortalizas', 'Tubérculos', 'Granos', 'Lácteos', 'Carnes', 'Abarrotes', 'Paquetes', 'Otros'];
 
   useEffect(() => {
     if (selectedStore) {
@@ -33,35 +35,20 @@ export default function Home() {
     if (!selectedStore) return;
     setLoading(true);
     try {
-      // Fetch products joined with product_store for the selected store
+      // Fetch products for the selected store OR global products (store_id is null)
       const { data, error } = await supabase
-        .from('product_store')
-        .select(`
-          price,
-          cost_price,
-          stock,
-          is_active,
-          products (*)
-        `)
-        .eq('store_id', selectedStore.id)
-        .eq('is_active', true);
+        .from('products')
+        .select('*')
+        .or(`store_id.eq.${selectedStore.id},store_id.is.null`)
+        .eq('is_active', true)
+        .order('name');
 
       if (error) {
         console.error('Supabase error:', error);
         throw error;
       }
 
-      // Map the data to match the Product interface
-      const mappedProducts = (data || []).map((item: any) => ({
-        ...item.products,
-        price: item.price,
-        cost_price: item.cost_price,
-        stock: item.stock,
-        is_active: item.is_active,
-        store_id: selectedStore.id
-      }));
-
-      setProducts(mappedProducts);
+      setProducts(data || []);
     } catch (error: any) {
       console.error('Error fetching products:', error);
       const message = error.message || 'Error al cargar productos';
@@ -213,6 +200,7 @@ export default function Home() {
                 key={product.id} 
                 product={product} 
                 onAdd={(p, q) => addToCart(p, q)} 
+                onShowDetails={(p) => setSelectedProduct(p)}
               />
             ))}
           </AnimatePresence>
@@ -226,16 +214,26 @@ export default function Home() {
           <p className="text-slate-500">Intenta con otra búsqueda o categoría.</p>
         </div>
       )}
+
+      <AnimatePresence>
+        {selectedProduct && (
+          <ProductDetailsModal 
+            product={selectedProduct} 
+            onClose={() => setSelectedProduct(null)} 
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-function ProductCard({ product, onAdd }: { product: Product, onAdd: (product: Product, quantity: number) => void, key?: string }) {
+function ProductCard({ product, onAdd, onShowDetails }: { product: Product, onAdd: (product: Product, quantity: number) => void, onShowDetails: (product: Product) => void, key?: string }) {
   const isWeightBased = product.type === 'libra';
   const step = isWeightBased ? 0.5 : 1;
   const [quantity, setQuantity] = useState(isWeightBased ? 0.5 : 1);
 
-  const handleAdd = () => {
+  const handleAdd = (e: React.MouseEvent) => {
+    e.stopPropagation();
     onAdd(product, quantity);
     toast.success(`${product.name} agregado al carrito`, {
       icon: '🛒',
@@ -254,7 +252,8 @@ function ProductCard({ product, onAdd }: { product: Product, onAdd: (product: Pr
       initial={{ opacity: 0, scale: 0.9 }}
       animate={{ opacity: 1, scale: 1 }}
       exit={{ opacity: 0, scale: 0.9 }}
-      className="group bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-slate-200/50 transition-all flex flex-col"
+      onClick={() => onShowDetails(product)}
+      className="group bg-white rounded-2xl overflow-hidden border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-slate-200/50 transition-all flex flex-col cursor-pointer"
     >
       <div className="relative aspect-square overflow-hidden bg-slate-50">
         <img
@@ -263,10 +262,19 @@ function ProductCard({ product, onAdd }: { product: Product, onAdd: (product: Pr
           referrerPolicy="no-referrer"
           className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
         />
-        <div className="absolute top-2 right-2">
+        <div className="absolute top-2 right-2 flex flex-col gap-2">
           <span className="bg-white/90 backdrop-blur-md text-primary text-[10px] font-black px-2 py-1 rounded-lg shadow-sm uppercase tracking-wider">
             Por {product.type}
           </span>
+          <button 
+            onClick={(e) => {
+              e.stopPropagation();
+              onShowDetails(product);
+            }}
+            className="bg-primary text-white p-2 rounded-full shadow-lg hover:scale-110 transition-transform"
+          >
+            <Info size={14} />
+          </button>
         </div>
       </div>
       
@@ -279,7 +287,7 @@ function ProductCard({ product, onAdd }: { product: Product, onAdd: (product: Pr
         <div className="mt-auto">
           <div className="flex items-center justify-between mb-4">
             <span className="text-lg font-black text-primary">{formatCurrency(product.price)}</span>
-            <div className="flex items-center bg-slate-50 rounded-lg p-1">
+            <div className="flex items-center bg-slate-50 rounded-lg p-1" onClick={e => e.stopPropagation()}>
               <button 
                 onClick={() => setQuantity(q => Math.max(step, q - step))}
                 className="p-1 hover:text-primary transition-colors"
@@ -310,3 +318,73 @@ function ProductCard({ product, onAdd }: { product: Product, onAdd: (product: Pr
     </motion.div>
   );
 }
+
+function ProductDetailsModal({ product, onClose }: { product: Product, onClose: () => void }) {
+  const [nutritionalInfo, setNutritionalInfo] = useState<NutritionalInfo | null>(null);
+  const [recipes, setRecipes] = useState<Recipe[] | null>(null);
+  const [loadingAI, setLoadingAI] = useState<'nutrition' | 'recipes' | null>(null);
+
+  const fetchNutrition = async () => {
+    setLoadingAI('nutrition');
+    try {
+      const info = await getNutritionalInfo(product.name);
+      setNutritionalInfo(info);
+    } catch (error: any) {
+      toast.error(error.message || 'No se pudo obtener la información nutricional');
+    } finally {
+      setLoadingAI(null);
+    }
+  };
+
+  const fetchRecipes = async () => {
+    setLoadingAI('recipes');
+    try {
+      const data = await getRecipes(product.name);
+      setRecipes(data);
+    } catch (error: any) {
+      toast.error(error.message || 'No se pudo generar las recetas');
+    } finally {
+      setLoadingAI(null);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+      <motion.div 
+        initial={{ opacity: 0, scale: 0.9, y: 20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9, y: 20 }}
+        className="bg-white w-full max-w-2xl rounded-[2.5rem] shadow-2xl overflow-hidden max-h-[90vh] flex flex-col"
+      >
+        <div className="relative h-64 shrink-0">
+          <img 
+            src={product.image_url || `https://picsum.photos/seed/${product.name}/800/600`} 
+            alt={product.name}
+            className="w-full h-full object-cover"
+          />
+          <button 
+            onClick={onClose}
+            className="absolute top-4 right-4 bg-white/90 backdrop-blur-md text-slate-900 px-4 py-2 rounded-2xl font-black text-xs flex items-center gap-2 hover:bg-white transition-all shadow-2xl border border-white/20 z-10"
+          >
+            <X size={18} className="text-primary" />
+            Cerrar Info
+          </button>
+          <div className="absolute bottom-0 left-0 right-0 p-8 bg-gradient-to-t from-slate-900/80 to-transparent text-white">
+            <span className="bg-primary px-3 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest mb-2 inline-block">
+              {product.category}
+            </span>
+            <h2 className="text-3xl font-black">{product.name}</h2>
+          </div>
+        </div>
+
+        <div className="p-8 overflow-y-auto custom-scrollbar space-y-8">
+          <div>
+            <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest mb-2">Descripción</h3>
+            <p className="text-slate-600 leading-relaxed">{product.description || 'Sin descripción disponible.'}</p>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+}
+

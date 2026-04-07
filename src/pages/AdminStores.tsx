@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Plus, Search, Edit2, Trash2, MapPin, X, Save, Phone } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import { sanitizeInput } from '../lib/utils';
 
 export default function AdminStores() {
   const [stores, setStores] = useState<any[]>([]);
@@ -70,17 +71,24 @@ export default function AdminStores() {
     setLoading(true);
 
     try {
+      const storeData = {
+        ...formData,
+        name: sanitizeInput(formData.name),
+        address: sanitizeInput(formData.address),
+        phone: sanitizeInput(formData.phone)
+      };
+
       if (editingStore) {
         const { error } = await supabase
           .from('stores')
-          .update(formData)
+          .update(storeData)
           .eq('id', editingStore.id);
         if (error) throw error;
         toast.success('Tienda actualizada');
       } else {
         const { error } = await supabase
           .from('stores')
-          .insert(formData);
+          .insert(storeData);
         if (error) throw error;
         toast.success('Tienda creada');
       }

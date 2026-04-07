@@ -2,9 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { supabase } from '../lib/supabase';
 import { Product, Store } from '../types/database';
 import { formatCurrency } from '../lib/utils';
-import { Search, Save, RefreshCw, Filter, Package, AlertCircle, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 import { useAuth } from '../context/AuthContext';
+import { useStore } from '../context/StoreContext';
+import { Search, Save, RefreshCw, Filter, Package, AlertCircle, Eye, EyeOff, CheckCircle2, ChevronDown, MapPin } from 'lucide-react';
 
 interface ProductChange {
   price?: number;
@@ -15,28 +16,32 @@ interface ProductChange {
 
 export default function AdminInventory() {
   const { isAdmin, profile } = useAuth();
+  const { selectedStore: contextStore, stores: allStores, setSelectedStore: setContextStore } = useStore();
   const [products, setProducts] = useState<Product[]>([]);
   const [stores, setStores] = useState<Store[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [search, setSearch] = useState('');
-  const [selectedStore, setSelectedStore] = useState<string>('all');
   const [changes, setChanges] = useState<Record<string, ProductChange>>({});
 
   useEffect(() => {
     fetchData();
-  }, []);
+  }, [profile?.store_id, contextStore?.id]);
 
   const fetchData = async () => {
     setLoading(true);
     try {
+      const effectiveStoreId = isAdmin ? contextStore?.id : profile?.store_id;
+
       let productsQuery = supabase.from('products').select('*').order('name');
       let storesQuery = supabase.from('stores').select('*').order('name');
 
+      if (effectiveStoreId) {
+        productsQuery = productsQuery.or(`store_id.eq.${effectiveStoreId},store_id.is.null`);
+      }
+
       if (profile?.store_id) {
-        productsQuery = productsQuery.eq('store_id', profile.store_id);
         storesQuery = storesQuery.eq('id', profile.store_id);
-        setSelectedStore(profile.store_id);
       }
 
       const [productsRes, storesRes] = await Promise.all([
@@ -102,8 +107,7 @@ export default function AdminInventory() {
   const filteredProducts = products.filter(p => {
     const matchesSearch = p.name.toLowerCase().includes(search.toLowerCase()) || 
                          p.category.toLowerCase().includes(search.toLowerCase());
-    const matchesStore = selectedStore === 'all' || p.store_id === selectedStore;
-    return matchesSearch && matchesStore;
+    return matchesSearch;
   });
 
   const hasChanges = Object.keys(changes).length > 0;
@@ -113,6 +117,34 @@ export default function AdminInventory() {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-black text-slate-900">Gestor de Inventario Central</h1>
+          {isAdmin && (
+            <div className="relative group/store mt-2">
+              <button className="flex items-center gap-2 bg-white border border-slate-200 px-3 py-1.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-50 transition-all shadow-sm">
+                <MapPin size={14} className="text-primary" />
+                {contextStore?.name || 'Todas las Tiendas'}
+                <ChevronDown size={14} />
+              </button>
+              <div className="absolute top-full left-0 mt-2 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 opacity-0 invisible group-hover/store:opacity-100 group-hover/store:visible transition-all z-50">
+                <button 
+                  onClick={() => setContextStore(null)}
+                  className="w-full text-left px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50 hover:text-primary transition-colors"
+                >
+                  Todas las Tiendas (Global)
+                </button>
+                {allStores.map(store => (
+                  <button 
+                    key={store.id}
+                    onClick={() => setContextStore(store)}
+                    className={`w-full text-left px-4 py-2 text-xs font-bold transition-colors ${
+                      contextStore?.id === store.id ? 'bg-primary/5 text-primary' : 'text-slate-600 hover:bg-slate-50 hover:text-primary'
+                    }`}
+                  >
+                    {store.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           <p className="text-slate-500 font-medium">Actualización masiva de precios, costos y stock</p>
         </div>
         <div className="flex gap-3">
@@ -134,31 +166,15 @@ export default function AdminInventory() {
         </div>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-4">
-        <div className="md:col-span-2 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3">
-          <Search className="text-slate-400" size={20} />
-          <input
-            type="text"
-            placeholder="Buscar por nombre o categoría..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="flex-1 bg-transparent border-none outline-none text-sm font-medium"
-          />
-        </div>
-        <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3">
-          <Filter className="text-slate-400" size={20} />
-          <select 
-            value={selectedStore}
-            onChange={(e) => setSelectedStore(e.target.value)}
-            disabled={!!profile?.store_id}
-            className="flex-1 bg-transparent border-none outline-none text-sm font-bold text-slate-700 disabled:opacity-50"
-          >
-            {!profile?.store_id && <option value="all">Todas las Tiendas</option>}
-            {stores.map(s => (
-              <option key={s.id} value={s.id}>{s.name}</option>
-            ))}
-          </select>
-        </div>
+      <div className="bg-white p-4 rounded-2xl border border-slate-100 shadow-sm flex items-center gap-3">
+        <Search className="text-slate-400" size={20} />
+        <input
+          type="text"
+          placeholder="Buscar por nombre o categoría..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="flex-1 bg-transparent border-none outline-none text-sm font-medium"
+        />
       </div>
 
       <div className="bg-white rounded-[2.5rem] border border-slate-100 shadow-sm overflow-hidden">

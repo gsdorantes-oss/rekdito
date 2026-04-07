@@ -26,11 +26,15 @@ export interface Profile {
 }
 
 export type OrderStatus = 'Pendiente' | 'Preparando' | 'En camino' | 'Entregado' | 'Cancelado';
+export type DeliveryType = 'delivery' | 'pickup' | 'in_store';
+export type PaymentStatus = 'Pendiente' | 'Pagado';
 
 export interface Order {
   id: string;
   user_id: string;
   status: OrderStatus;
+  delivery_type: DeliveryType;
+  payment_status: PaymentStatus;
   total: number;
   delivery_fee: number;
   delivery_zone?: string;

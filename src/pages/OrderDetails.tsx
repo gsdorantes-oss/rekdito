@@ -5,7 +5,7 @@ import { Order, OrderItem } from '../types/database';
 import { formatCurrency, generateWhatsAppLink } from '../lib/utils';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
-import { Package, MapPin, Phone, CreditCard, Clock, ChevronLeft, MessageCircle } from 'lucide-react';
+import { Package, MapPin, Phone, CreditCard, Clock, ChevronLeft, MessageCircle, Printer } from 'lucide-react';
 import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import { toast } from 'react-hot-toast';
 
@@ -115,23 +115,51 @@ export default function OrderDetails() {
           <ChevronLeft size={20} />
           Mis Pedidos
         </Link>
-        <button 
-          onClick={handleWhatsApp}
-          className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-lg shadow-emerald-500/20"
-        >
-          <MessageCircle size={18} />
-          WhatsApp
-        </button>
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => window.print()}
+            className="bg-white border border-slate-200 text-slate-600 px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 hover:bg-slate-50 transition-all shadow-sm print:hidden"
+          >
+            <Printer size={18} />
+            Imprimir
+          </button>
+          <button 
+            onClick={handleWhatsApp}
+            className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-lg shadow-emerald-500/20 print:hidden"
+          >
+            <MessageCircle size={18} />
+            WhatsApp
+          </button>
+        </div>
       </div>
 
-      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-3xl border border-slate-100 shadow-sm overflow-hidden print:shadow-none print:border-none">
         <div className="p-6 md:p-8 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-3 mb-2">
               <h1 className="text-2xl font-black text-slate-900">Pedido #{order.id.slice(0, 8)}</h1>
-              <span className={`px-4 py-1.5 rounded-xl text-sm font-black uppercase tracking-wider shadow-sm ${statusColors[order.status]}`}>
-                {order.status}
-              </span>
+              <div className="flex flex-wrap gap-2">
+                <span className={`px-4 py-1.5 rounded-xl text-sm font-black uppercase tracking-wider shadow-sm ${statusColors[order.status]}`}>
+                  {order.status}
+                </span>
+                {order.delivery_type && (
+                  <span className={`px-4 py-1.5 rounded-xl text-sm font-black uppercase tracking-wider shadow-sm ${
+                    order.delivery_type === 'delivery' ? 'bg-blue-50 text-blue-600' :
+                    order.delivery_type === 'pickup' ? 'bg-amber-50 text-amber-600' :
+                    'bg-emerald-50 text-emerald-600'
+                  }`}>
+                    {order.delivery_type === 'delivery' ? 'Domicilio' :
+                     order.delivery_type === 'pickup' ? 'Retiro' : 'En Tienda'}
+                  </span>
+                )}
+                {order.payment_status && (
+                  <span className={`px-4 py-1.5 rounded-xl text-sm font-black uppercase tracking-wider shadow-sm ${
+                    order.payment_status === 'Pagado' ? 'bg-emerald-50 text-emerald-600' : 'bg-red-50 text-red-600'
+                  }`}>
+                    {order.payment_status}
+                  </span>
+                )}
+              </div>
             </div>
             <p className="text-slate-500 flex items-center gap-2 text-sm font-medium">
               <Clock size={16} />
@@ -232,6 +260,22 @@ export default function OrderDetails() {
                 )}
               </div>
             </section>
+          </div>
+        </div>
+
+        {/* QR Promotion Section */}
+        <div className="p-8 bg-slate-50 border-t border-slate-100 text-center space-y-4">
+          <div className="max-w-xs mx-auto">
+            <p className="text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">¡Pide más fácil desde nuestra App!</p>
+            <p className="text-xs text-slate-500 mb-6 font-medium">Escanea el código QR para descargar la app y recibir promociones exclusivas.</p>
+            <div className="bg-white p-4 rounded-3xl shadow-sm inline-block border border-slate-100">
+              <img 
+                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=https://ais-pre-tb7cqbg4cbmgkx6g7ep44x-150633789060.us-west2.run.app`}
+                alt="QR App"
+                className="w-40 h-40"
+              />
+            </div>
+            <p className="text-[10px] font-bold text-primary mt-4 uppercase tracking-widest">Recadito Delivery</p>
           </div>
         </div>
       </div>
